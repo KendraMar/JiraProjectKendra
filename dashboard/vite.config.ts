@@ -53,6 +53,7 @@ function jiraProxyPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? "/JiraProjectKendra/" : "/",
   plugins: [react(), jiraProxyPlugin()],
-});
+}));

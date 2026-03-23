@@ -6,6 +6,7 @@ const COMPONENT = import.meta.env.VITE_JIRA_COMPONENT;
 const EMAIL = import.meta.env.VITE_JIRA_EMAIL;
 const API_TOKEN = import.meta.env.VITE_JIRA_API_TOKEN;
 const BASE_URL = import.meta.env.VITE_JIRA_BASE_URL;
+const PROXY_BASE = import.meta.env.VITE_PROXY_URL || "/jira-api";
 
 // Jira custom field IDs for the CPUX project
 const FIELD_SPRINT = "customfield_10020";
@@ -278,7 +279,7 @@ async function jqlSearch(jql: string): Promise<JiraIssue[]> {
     if (nextPageToken) params.set("nextPageToken", nextPageToken);
 
     const res = await jiraFetch(
-      `/jira-api/ex/jira/${CLOUD_ID}/rest/api/3/search/jql?${params}`,
+      `${PROXY_BASE}/ex/jira/${CLOUD_ID}/rest/api/3/search/jql?${params}`,
       {
         headers: {
           Authorization: `Basic ${btoa(`${EMAIL}:${API_TOKEN}`)}`,
@@ -330,7 +331,7 @@ function jiraFetch(url: string, init?: RequestInit): Promise<Response> {
 }
 
 function apiBase(): string {
-  return `/jira-api/ex/jira/${CLOUD_ID}`;
+  return `${PROXY_BASE}/ex/jira/${CLOUD_ID}`;
 }
 
 function toDueDate(display: string): string | undefined {
@@ -595,6 +596,7 @@ export async function updateIssue(
   }
 
   if (Object.keys(fields).length > 0) {
+    console.log(`[updateIssue] PUT ${updated.key} — fields being sent:`, JSON.stringify(fields, null, 2));
     const res = await jiraFetch(`${apiBase()}/rest/api/3/issue/${updated.key}`, {
       method: "PUT",
       headers: authHeaders(),
@@ -602,8 +604,12 @@ export async function updateIssue(
     });
     if (!res.ok) {
       const errBody = await res.text();
+      console.error(`[updateIssue] PUT failed (${res.status}):`, errBody);
       throw new Error(`Jira update failed (${res.status}): ${errBody}`);
     }
+    console.log(`[updateIssue] PUT ${updated.key} succeeded (${res.status})`);
+  } else {
+    console.log(`[updateIssue] No field changes detected for ${updated.key}`);
   }
 
   const postOps: Promise<void>[] = [];
@@ -625,13 +631,26 @@ export async function updateIssue(
 
   await Promise.allSettled(postOps);
 
-  const fetchRes = await jiraFetch(
-    `${apiBase()}/rest/api/3/issue/${updated.key}?fields=${FIELDS.join(",")}`,
+  const verifyRes = await jiraFetch(
+    `${apiBase()}/rest/api/3/issue/${updated.key}?fields=parent,${FIELDS.join(",")}`,
     { headers: authHeaders() }
   );
 
-  if (!fetchRes.ok) return updated;
-  const fullIssue = await fetchRes.json();
+  if (!verifyRes.ok) return updated;
+  const fullIssue = await verifyRes.json();
+
+  const parentAfter = fullIssue.fields?.parent;
+  console.log(`[updateIssue] VERIFY ${updated.key} — parent after update:`, JSON.stringify(parentAfter, null, 2));
+  if (fields.parent) {
+    const sentKey = (fields.parent as { key: string }).key;
+    const actualKey = parentAfter?.key ?? "(none)";
+    if (sentKey !== actualKey) {
+      console.warn(`[updateIssue] PARENT MISMATCH: sent ${sentKey}, but Jira shows ${actualKey}`);
+    } else {
+      console.log(`[updateIssue] Parent change confirmed: ${actualKey}`);
+    }
+  }
+
   return parseIssue(fullIssue);
 }
 
@@ -674,7 +693,7 @@ export async function fetchEpics(): Promise<JiraEpic[]> {
     });
 
     const res = await jiraFetch(
-      `/jira-api/ex/jira/${CLOUD_ID}/rest/api/3/search/jql?${params}`,
+      `${PROXY_BASE}/ex/jira/${CLOUD_ID}/rest/api/3/search/jql?${params}`,
       {
         headers: {
           Authorization: `Basic ${btoa(`${EMAIL}:${API_TOKEN}`)}`,

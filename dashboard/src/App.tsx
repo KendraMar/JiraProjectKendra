@@ -526,6 +526,7 @@ function IssueDetailPanel({
   allStatuses,
   allMembers,
   allEpicNames,
+  epicNameToKey,
   isClone = false,
   isBacklog = false,
   isSaving = false,
@@ -536,6 +537,7 @@ function IssueDetailPanel({
   allStatuses: string[];
   allMembers: string[];
   allEpicNames: string[];
+  epicNameToKey: Map<string, string>;
   isClone?: boolean;
   isBacklog?: boolean;
   isSaving?: boolean;
@@ -739,7 +741,7 @@ function IssueDetailPanel({
               <DescriptionListGroup>
                 <DescriptionListTerm>Epic</DescriptionListTerm>
                 <DescriptionListDescription>
-                  <PanelSelect label="Epic" value={draft.epicName} options={epicSelectOptions} onSelect={(v) => patch({ epicName: v })} highlight={isClone} />
+                  <PanelSelect label="Epic" value={draft.epicName} options={epicSelectOptions} onSelect={(v) => patch({ epicName: v, epicKey: epicNameToKey.get(v) ?? "" })} highlight={isClone} />
                 </DescriptionListDescription>
               </DescriptionListGroup>
             </DescriptionList>
@@ -974,6 +976,11 @@ export default function App() {
     [epics]
   );
 
+  const epicNameToKey = useMemo(
+    () => new Map(epics.map((e) => [e.summary, e.key])),
+    [epics]
+  );
+
   const handleDragEnd = useCallback((result: DropResult) => {
     const { draggableId, source, destination } = result;
     if (!destination) return;
@@ -1127,6 +1134,7 @@ export default function App() {
       allStatuses={allStatuses}
       allMembers={allMembers}
       allEpicNames={allEpicNames}
+      epicNameToKey={epicNameToKey}
       isClone={isCloneMode}
       isBacklog={isBacklogCreate}
       isSaving={saving}
