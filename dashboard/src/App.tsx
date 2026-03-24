@@ -1168,7 +1168,7 @@ export default function App() {
     toastIdRef.current += 1;
     const id = toastIdRef.current;
     setToasts((prev) => [...prev, { id, title, variant }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 6000);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 15000);
   }, []);
 
   const [saving, setSaving] = useState(false);
@@ -1260,9 +1260,14 @@ export default function App() {
                     alt="Consolepuffs"
                     style={{ borderRadius: 6 }}
                   />
-                  <Title headingLevel="h1" size="4xl">
-                    Consolepuffs Jira Board
-                  </Title>
+                  <div>
+                    <Title headingLevel="h1" size="4xl">
+                      Consolepuffs Jira Board
+                    </Title>
+                    <Content component="p" style={{ color: "var(--pf-t--global--text--color--subtle)", marginTop: 4, fontSize: "1.25rem" }}>
+                      {import.meta.env.VITE_JIRA_EMAIL}
+                    </Content>
+                  </div>
                 </div>
               </ToolbarItem>
             </ToolbarGroup>
