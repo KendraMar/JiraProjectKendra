@@ -62,11 +62,14 @@ import {
   Th,
   Td,
 } from "@patternfly/react-table";
-import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon } from "@patternfly/react-icons";
+import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon } from "@patternfly/react-icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
 import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue } from "./services/jiraService";
+
+const JIRA_CPUX_BOARD_URL =
+  "https://redhat.atlassian.net/jira/software/c/projects/CPUX/boards/6195";
 
 // ── Label color helpers ──
 
@@ -1272,6 +1275,18 @@ export default function App() {
               </ToolbarItem>
             </ToolbarGroup>
             <ToolbarGroup align={{ default: "alignEnd" }}>
+              <ToolbarItem>
+                <Button
+                  variant="secondary"
+                  icon={<ExternalLinkAltIcon />}
+                  component="a"
+                  href={JIRA_CPUX_BOARD_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View board in JIRA
+                </Button>
+              </ToolbarItem>
               <ToolbarItem>
                 <Button
                   variant="primary"
