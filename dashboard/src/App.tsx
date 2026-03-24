@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "./App.css";
 import {
   Page,
   Masthead,
@@ -50,6 +51,7 @@ import {
   Alert,
   AlertGroup,
   AlertActionCloseButton,
+  Tooltip,
 } from "@patternfly/react-core";
 import { FilterIcon } from "@patternfly/react-icons";
 import {
@@ -284,37 +286,38 @@ function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, o
   };
 
   return (
-    <Table aria-label={`${group.name} issues`} variant="compact">
+    <Table aria-label={`${group.name} issues`} variant="compact" style={{ width: "100%" }}>
       <Thead>
         <Tr>
-          <Th style={{ width: 40 }} aria-label="Drag handle" />
-          <Th width={10}>
+          <Th style={{ width: 36, overflow: "visible" }} aria-label="Drag handle" />
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               Owner
               <ColumnFilter label="Owner" options={ownerOptions} selected={ownerFilter} onSelect={(v) => toggleFilter(setOwnerFilter, v)} />
               <SortButton label="Owner" active={activeSortIndex === OWNER_COL} direction={activeSortDirection} onClick={() => handleSort(OWNER_COL)} />
             </span>
           </Th>
-          <Th width={10}>Jira number (key)</Th>
-          <Th>Summary</Th>
-          <Th width={10}>Activity Type</Th>
-          <Th width={10}>
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>Jira number</Th>
+          <Th style={{ overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>Summary</Th>
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>Activity Type</Th>
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               Status
               <ColumnFilter label="Status" options={statusOptions} selected={statusFilter} onSelect={(v) => toggleFilter(setStatusFilter, v)} />
               <SortButton label="Status" active={activeSortIndex === STATUS_COL} direction={activeSortDirection} onClick={() => handleSort(STATUS_COL)} />
             </span>
           </Th>
-          <Th width={15}>
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               Epic
               <ColumnFilter label="Epic" options={epicOptions} selected={epicFilter} onSelect={(v) => toggleFilter(setEpicFilter, v)} />
               <SortButton label="Epic" active={activeSortIndex === EPIC_COL} direction={activeSortDirection} onClick={() => handleSort(EPIC_COL)} />
             </span>
           </Th>
-          <Th width={10}>Story Points</Th>
-          <Th width={10}>Due Date</Th>
-          <Th style={{ width: 48 }} aria-label="Actions" />
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", width: "8%" }}>Story Points</Th>
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", width: "8%" }}>Due Date</Th>
+          <Th style={{ overflow: "visible", textOverflow: "clip" }}>Latest Comment</Th>
+          <Th style={{ width: 48, overflow: "visible" }} aria-label="Actions" />
         </Tr>
       </Thead>
       <Droppable droppableId={droppableId} type="ISSUE">
@@ -322,7 +325,7 @@ function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, o
           <Tbody ref={provided.innerRef} {...provided.droppableProps} style={snapshot.isDraggingOver ? { backgroundColor: "var(--pf-t--global--background--color--secondary--default)" } : undefined}>
             {filteredAndSorted.length === 0 && !snapshot.isDraggingOver ? (
               <Tr>
-                <Td colSpan={10}>
+                <Td colSpan={11}>
                   <Content component="p">No tickets in this sprint yet.</Content>
                 </Td>
               </Tr>
@@ -387,13 +390,13 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
         activeKey={activeTab}
         onSelect={(_event, key) => setActiveTab(key as number)}
         aria-label="HCC Sprint tabs"
-        style={{ gap: 16 }}
+        style={{ gap: 32 }}
       >
         {tabs.map((tab, idx) => (
           <Tab
             key={tab.name}
             eventKey={idx}
-            style={{ marginRight: 24 }}
+            style={{ marginRight: 48 }}
             title={
               <TabTitleText>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
@@ -547,6 +550,8 @@ function IssueDetailPanel({
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [commentsExpanded, setCommentsExpanded] = useState(true);
   const [newComment, setNewComment] = useState("");
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [plainDesc, setPlainDesc] = useState("");
 
   const patch = (partial: Partial<JiraIssue>) => setDraft((prev) => ({ ...prev, ...partial }));
 
@@ -565,6 +570,36 @@ function IssueDetailPanel({
     setDraft((prev) => ({ ...prev, comments: [comment, ...prev.comments] }));
     setNewComment("");
   };
+
+  const missingFields: string[] = [];
+  if (!draft.summary.trim()) missingFields.push("Summary");
+  if (!draft.status) missingFields.push("Status");
+  if (!draft.assigneeName || draft.assigneeName === "Unassigned") missingFields.push("Assignee");
+  if (!draft.reporterName) missingFields.push("Reporter");
+  if (!draft.description?.trim()) missingFields.push("Description");
+  if (!draft.activityType) missingFields.push("Activity Type");
+  if (draft.storyPoints == null) missingFields.push("Story Points");
+  if (!draft.epicName) missingFields.push("Epic");
+  if (!isBacklog && !draft.sprintName) missingFields.push("Sprint");
+
+  const allFieldsFilled = missingFields.length === 0;
+
+  const hasChanges = isClone || (
+    draft.summary !== issue.summary ||
+    draft.status !== issue.status ||
+    draft.assigneeName !== issue.assigneeName ||
+    draft.reporterName !== issue.reporterName ||
+    draft.description !== issue.description ||
+    draft.activityType !== issue.activityType ||
+    draft.storyPoints !== issue.storyPoints ||
+    draft.dueDate !== issue.dueDate ||
+    draft.epicName !== issue.epicName ||
+    draft.epicKey !== issue.epicKey ||
+    draft.sprintName !== issue.sprintName ||
+    draft.comments.length !== issue.comments.length
+  );
+
+  const canSave = allFieldsFilled && hasChanges;
 
   const statusOptions = allStatuses.map((s) => ({ value: s, label: s }));
   const memberOptions = allMembers.map((m) => ({ value: m, label: m }));
@@ -646,17 +681,40 @@ function IssueDetailPanel({
             isExpanded={descExpanded}
             onToggle={(_e, expanded) => setDescExpanded(expanded)}
           >
-            <TextArea
-              value={draft.description}
-              onChange={(_e, val) => patch({ description: val })}
-              aria-label="Description"
-              autoResize
-              rows={6}
-              style={{
-                width: "100%",
-                ...(isClone ? { color: "var(--pf-t--global--color--status--danger--default)" } : {}),
-              }}
-            />
+            {editingDesc ? (
+              <TextArea
+                value={plainDesc}
+                onChange={(_e, val) => setPlainDesc(val)}
+                onBlur={() => { patch({ description: plainDesc }); setEditingDesc(false); }}
+                aria-label="Description"
+                autoResize
+                rows={6}
+                autoFocus
+                style={{
+                  width: "100%",
+                  ...(isClone ? { color: "var(--pf-t--global--color--status--danger--default)" } : {}),
+                }}
+              />
+            ) : (
+              <div
+                className="description-view"
+                onClick={() => {
+                  const tmp = document.createElement("div");
+                  tmp.innerHTML = draft.description || "";
+                  setPlainDesc(tmp.textContent || "");
+                  setEditingDesc(true);
+                }}
+                style={{
+                  cursor: "text",
+                  minHeight: 60,
+                  padding: 8,
+                  border: "1px solid var(--pf-t--global--border--color--default)",
+                  borderRadius: 4,
+                  ...(isClone ? { color: "var(--pf-t--global--color--status--danger--default)" } : {}),
+                }}
+                dangerouslySetInnerHTML={{ __html: draft.description || "<em>Click to edit…</em>" }}
+              />
+            )}
           </ExpandableSection>
 
           <Divider style={{ margin: "16px 0" }} />
@@ -686,7 +744,7 @@ function IssueDetailPanel({
                 </DescriptionListDescription>
               </DescriptionListGroup>
               <DescriptionListGroup>
-                <DescriptionListTerm>Due Date</DescriptionListTerm>
+                <DescriptionListTerm>Due Date<br /><span style={{ fontSize: "0.75em", fontWeight: 400, color: "var(--pf-t--global--color--nonstatus--gray--dark)" }}>(Optional)</span></DescriptionListTerm>
                 <DescriptionListDescription>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                     <input
@@ -806,7 +864,25 @@ function IssueDetailPanel({
             flexShrink: 0,
           }}
         >
-          <Button variant="primary" onClick={handleSave} isLoading={isSaving} isDisabled={isSaving}>{isSaving ? "Creating…" : isClone ? "Create" : "Save"}</Button>
+          {!canSave && !isSaving ? (
+            <Tooltip
+              content={
+                !allFieldsFilled
+                  ? `All fields except for Due Date must have a selection. You haven't entered a value for ${missingFields.join(", ")}.`
+                  : "No changes have been made."
+              }
+            >
+              <span tabIndex={0} style={{ display: "inline-block" }}>
+                <Button variant="primary" isDisabled style={{ pointerEvents: "none" }}>
+                  {isClone ? "Create" : "Save"}
+                </Button>
+              </span>
+            </Tooltip>
+          ) : (
+            <Button variant="primary" onClick={handleSave} isLoading={isSaving} isDisabled={isSaving}>
+              {isSaving ? "Creating…" : isClone ? "Create" : "Save"}
+            </Button>
+          )}
           <Button variant="link" onClick={handleCancel}>Cancel</Button>
         </div>
       </div>
@@ -861,7 +937,7 @@ function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: Jira
               </FlexItem>
             </Flex>
           </Td>
-          <Td dataLabel="Key">
+          <Td dataLabel="Key" style={{ whiteSpace: "nowrap" }}>
             <a
               href="#"
               onClick={(e) => { e.preventDefault(); onClickKey(issue); }}
@@ -895,11 +971,27 @@ function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: Jira
           <Td dataLabel="Story Points">
             {issue.storyPoints != null ? issue.storyPoints : "--"}
           </Td>
-          <Td dataLabel="Due Date">
+          <Td dataLabel="Due Date" style={{ whiteSpace: "nowrap" }}>
             <span style={{ display: "inline-flex", alignItems: "center" }}>
               {issue.dueDate || "--"}
               {dueDateIcon(issue.dueDate)}
             </span>
+          </Td>
+          <Td dataLabel="Latest Comment" style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+            {issue.comments && issue.comments.length > 0 ? (() => {
+              const latest = issue.comments[issue.comments.length - 1];
+              const tmp = document.createElement("div");
+              tmp.innerHTML = latest.body;
+              const plain = tmp.textContent || "";
+              return (
+                <Content component="small" style={{ lineHeight: 1.4 }}>
+                  <strong>{latest.created}</strong>{" — "}
+                  {plain.length > 112 ? plain.slice(0, 112) + "…" : plain}
+                </Content>
+              );
+            })() : (
+              <Content component="small">--</Content>
+            )}
           </Td>
           <Td dataLabel="Actions" style={{ width: 48 }}>
             <Dropdown
@@ -1155,7 +1247,7 @@ export default function App() {
       </AlertGroup>
       <Drawer isExpanded={selectedIssue !== null} onExpand={() => {}}>
         <DrawerContent panelContent={drawerPanel ?? <></>}>
-          <DrawerContentBody>
+          <DrawerContentBody onClick={() => { if (selectedIssue) handlePanelClose(); }}>
       {/* ── Header toolbar ── */}
       <PageSection aria-label="Dashboard header">
         <Toolbar>

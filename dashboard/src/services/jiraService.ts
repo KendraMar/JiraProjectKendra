@@ -157,14 +157,96 @@ function formatSprintDate(iso?: string): string {
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
 }
 
-function extractText(adf: unknown): string {
-  if (!adf || typeof adf !== "object") return "";
-  const node = adf as { type?: string; text?: string; content?: unknown[] };
-  if (node.type === "text" && node.text) return node.text;
-  if (Array.isArray(node.content)) {
-    return node.content.map(extractText).join(node.type === "paragraph" ? "\n" : "");
+interface AdfNode {
+  type?: string;
+  text?: string;
+  content?: AdfNode[];
+  attrs?: Record<string, unknown>;
+  marks?: { type: string; attrs?: Record<string, unknown> }[];
+}
+
+function adfToHtml(node: unknown): string {
+  if (!node) return "";
+  if (typeof node === "string") {
+    return node.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />");
   }
-  return "";
+  if (typeof node !== "object") return "";
+  const n = node as AdfNode;
+
+  if (n.type === "text") {
+    let text = (n.text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    if (n.marks) {
+      for (const mark of n.marks) {
+        switch (mark.type) {
+          case "strong": text = `<strong>${text}</strong>`; break;
+          case "em": text = `<em>${text}</em>`; break;
+          case "underline": text = `<u>${text}</u>`; break;
+          case "strike": text = `<s>${text}</s>`; break;
+          case "code": text = `<code>${text}</code>`; break;
+          case "link": {
+            const href = mark.attrs?.href ?? "#";
+            text = `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+            break;
+          }
+        }
+      }
+    }
+    return text;
+  }
+
+  const children = (n.content ?? []).map(adfToHtml).join("");
+
+  switch (n.type) {
+    case "doc": return children;
+    case "paragraph": return children ? `<p>${children}</p>` : "<p>&nbsp;</p>";
+    case "heading": {
+      const level = (n.attrs?.level as number) ?? 3;
+      return `<h${level}>${children}</h${level}>`;
+    }
+    case "bulletList": return `<ul>${children}</ul>`;
+    case "orderedList": return `<ol>${children}</ol>`;
+    case "listItem": return `<li>${children}</li>`;
+    case "blockquote": return `<blockquote style="border-left:3px solid #ccc;padding-left:12px;margin:8px 0;color:#555">${children}</blockquote>`;
+    case "codeBlock": return `<pre style="background:#f4f4f4;padding:8px;border-radius:4px;overflow-x:auto"><code>${children}</code></pre>`;
+    case "rule": return "<hr />";
+    case "hardBreak": return "<br />";
+    case "table": return `<table style="border-collapse:collapse;width:100%;margin:8px 0">${children}</table>`;
+    case "tableRow": return `<tr>${children}</tr>`;
+    case "tableHeader": return `<th style="border:1px solid #ddd;padding:6px;background:#f0f0f0;text-align:left">${children}</th>`;
+    case "tableCell": return `<td style="border:1px solid #ddd;padding:6px">${children}</td>`;
+    case "panel": return `<div style="border:1px solid #ddd;border-radius:4px;padding:12px;margin:8px 0;background:#f8f9fa">${children}</div>`;
+    case "expand": {
+      const title = (n.attrs?.title as string) || "Details";
+      return `<details style="margin:8px 0"><summary><strong>${title}</strong></summary>${children}</details>`;
+    }
+    case "taskList": return `<ul style="list-style:none;padding-left:0">${children}</ul>`;
+    case "taskItem": {
+      const checked = n.attrs?.state === "DONE";
+      return `<li>${checked ? "☑" : "☐"} ${children}</li>`;
+    }
+    case "inlineCard": {
+      const url = (n.attrs?.url as string) ?? "";
+      return url ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>` : "";
+    }
+    case "mention": return `<strong>@${(n.attrs?.text as string) ?? "user"}</strong>`;
+    case "emoji": return (n.attrs?.text as string) ?? (n.attrs?.shortName as string) ?? "";
+    case "date": {
+      const ts = n.attrs?.timestamp as number | string | undefined;
+      if (ts) { const d = new Date(Number(ts)); return d.toLocaleDateString(); }
+      return "";
+    }
+    case "status": return `<span style="background:#eee;padding:2px 6px;border-radius:3px;font-size:0.85em">${(n.attrs?.text as string) ?? ""}</span>`;
+    case "mediaGroup":
+    case "mediaSingle":
+    case "media":
+      return "";
+    default:
+      return children || "";
+  }
+}
+
+function extractText(adf: unknown): string {
+  return adfToHtml(adf);
 }
 
 function parseComments(raw: RawComment[]): JiraComment[] {

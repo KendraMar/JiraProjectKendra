@@ -1,0 +1,43 @@
+.pf-v6-c-table :is(th, td) {
+  padding-inline-start: 16px !important;
+  padding-inline-end: 16px !important;
+}
+
+.description-view p {
+  margin: 0 0 0.75em 0;
+  line-height: 1.6;
+}
+
+.description-view h1,
+.description-view h2,
+.description-view h3,
+.description-view h4,
+.description-view h5,
+.description-view h6 {
+  margin: 1em 0 0.5em 0;
+  line-height: 1.3;
+}
+
+.description-view ul,
+.description-view ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.description-view li {
+  margin: 0.25em 0;
+}
+
+.description-view a {
+  color: var(--pf-t--global--color--link--default);
+}
+
+.description-view pre {
+  margin: 0.5em 0;
+}
+
+.description-view hr {
+  margin: 1em 0;
+  border: none;
+  border-top: 1px solid #ddd;
+}
