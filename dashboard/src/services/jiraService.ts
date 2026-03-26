@@ -385,7 +385,7 @@ export async function fetchIssues(): Promise<JiraIssue[]> {
   }
 
   try {
-    const jql = `project = "${PROJECT_KEY}" AND component = "${COMPONENT}" ORDER BY updated DESC`;
+    const jql = `project = "${PROJECT_KEY}" AND component = "${COMPONENT}" AND issuetype != Epic ORDER BY updated DESC`;
     return await jqlSearch(jql);
   } catch (err) {
     console.error("Jira API error, falling back to static data", err);
