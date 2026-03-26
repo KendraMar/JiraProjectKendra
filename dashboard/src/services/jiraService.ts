@@ -489,7 +489,7 @@ async function resolveSprintId(sprintName: string): Promise<number | null> {
 
 // ── Move issue to sprint or backlog ──
 
-async function moveToSprint(issueKey: string, sprintName: string): Promise<void> {
+export async function moveToSprint(issueKey: string, sprintName: string): Promise<void> {
   if (!sprintName || sprintName === "Backlog") {
     await jiraFetch(`${apiBase()}/rest/api/3/issue/${issueKey}`, {
       method: "PUT",

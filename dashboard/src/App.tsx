@@ -66,7 +66,7 @@ import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, 
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
-import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue } from "./services/jiraService";
+import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint } from "./services/jiraService";
 
 const JIRA_CPUX_BOARD_URL =
   "https://redhat.atlassian.net/jira/software/c/projects/CPUX/boards/6195";
@@ -1087,32 +1087,6 @@ export default function App() {
     [epics]
   );
 
-  const handleDragEnd = useCallback((result: DropResult) => {
-    const { draggableId, source, destination } = result;
-    if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
-
-    const targetId = destination.droppableId;
-
-    setIssues((prev) =>
-      prev.map((issue) => {
-        if (issue.key !== draggableId) return issue;
-
-        if (targetId === "backlog") {
-          return { ...issue, sprintName: "", sprintState: "" as const };
-        }
-
-        const [, state, ...nameParts] = targetId.split(":");
-        const sprintName = nameParts.join(":");
-        return {
-          ...issue,
-          sprintName,
-          sprintState: state as "active" | "future" | "closed" | "",
-        };
-      })
-    );
-  }, []);
-
   const masthead = (
     <Masthead>
       <MastheadMain>
@@ -1185,13 +1159,54 @@ export default function App() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
   }, []);
 
+  const handleDragEnd = useCallback((result: DropResult) => {
+    const { draggableId, source, destination } = result;
+    if (!destination) return;
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+    const targetId = destination.droppableId;
+    let targetSprintName: string;
+
+    if (targetId === "backlog") {
+      targetSprintName = "Backlog";
+      setIssues((prev) =>
+        prev.map((issue) =>
+          issue.key === draggableId
+            ? { ...issue, sprintName: "", sprintState: "" as const }
+            : issue
+        )
+      );
+    } else {
+      const [, state, ...nameParts] = targetId.split(":");
+      targetSprintName = nameParts.join(":");
+      setIssues((prev) =>
+        prev.map((issue) =>
+          issue.key === draggableId
+            ? { ...issue, sprintName: targetSprintName, sprintState: state as "active" | "future" | "closed" | "" }
+            : issue
+        )
+      );
+    }
+
+    moveToSprint(draggableId, targetSprintName)
+      .then(() => addToast(`${draggableId} moved to ${targetSprintName}`))
+      .catch((err) => {
+        console.error("Failed to move issue", err);
+        addToast(`Failed to move ${draggableId}: ${(err as Error).message}`, "danger");
+        loadData();
+      });
+  }, [addToast, loadData]);
+
   const [saving, setSaving] = useState(false);
 
   const handleIssueUpdate = useCallback(async (updated: JiraIssue) => {
     if (isCloneMode) {
       setSaving(true);
       try {
-        const created = await createIssue(updated);
+        const prefix = updated.activityType ? `[${updated.activityType}] ` : "";
+        const summaryNoPrefix = updated.summary.replace(/^\[[^\]]+\]\s*/, "");
+        const finalSummary = prefix + summaryNoPrefix;
+        const created = await createIssue({ ...updated, summary: finalSummary });
         setIssues((prev) => [...prev, created]);
         const destination = created.sprintName || "Backlog";
         addToast(`${created.key} created and added to ${destination}`);
