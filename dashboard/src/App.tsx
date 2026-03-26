@@ -555,10 +555,17 @@ function IssueDetailPanel({
   const [newComment, setNewComment] = useState("");
   const [editingDesc, setEditingDesc] = useState(false);
   const [plainDesc, setPlainDesc] = useState("");
+  const [descDirty, setDescDirty] = useState(false);
 
   const patch = (partial: Partial<JiraIssue>) => setDraft((prev) => ({ ...prev, ...partial }));
 
-  const handleSave = () => onUpdate(draft);
+  const handleSave = () => {
+    if (!descDirty) {
+      onUpdate({ ...draft, description: issue.description });
+    } else {
+      onUpdate(draft);
+    }
+  };
   const handleCancel = () => onClose();
 
   const addComment = () => {
@@ -687,7 +694,7 @@ function IssueDetailPanel({
             {editingDesc ? (
               <TextArea
                 value={plainDesc}
-                onChange={(_e, val) => setPlainDesc(val)}
+                onChange={(_e, val) => { setPlainDesc(val); setDescDirty(true); }}
                 onBlur={() => { patch({ description: plainDesc }); setEditingDesc(false); }}
                 aria-label="Description"
                 autoResize
@@ -699,7 +706,8 @@ function IssueDetailPanel({
                 }}
               />
             ) : (
-              <div
+              <Content
+                component="div"
                 className="description-view"
                 onClick={() => {
                   const tmp = document.createElement("div");
@@ -846,9 +854,12 @@ function IssueDetailPanel({
                           <Content component="small"><strong>{c.author}</strong> · {c.created}</Content>
                         </FlexItem>
                       </Flex>
-                      <div style={{ whiteSpace: "pre-wrap", marginTop: 4, paddingLeft: 32 }}>
-                        {c.body}
-                      </div>
+                      <Content
+                        component="div"
+                        className="description-view"
+                        style={{ marginTop: 4, paddingLeft: 32 }}
+                        dangerouslySetInnerHTML={{ __html: c.body }}
+                      />
                     </FlexItem>
                   ))}
                 </Flex>
@@ -1171,7 +1182,7 @@ export default function App() {
     toastIdRef.current += 1;
     const id = toastIdRef.current;
     setToasts((prev) => [...prev, { id, title, variant }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 15000);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
   }, []);
 
   const [saving, setSaving] = useState(false);
@@ -1223,6 +1234,7 @@ export default function App() {
 
   const drawerPanel = selectedIssue ? (
     <IssueDetailPanel
+      key={selectedIssue.key + (isCloneMode ? "-clone" : "")}
       issue={selectedIssue}
       onClose={handlePanelClose}
       onUpdate={handleIssueUpdate}

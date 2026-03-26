@@ -4,8 +4,9 @@
 }
 
 .description-view p {
-  margin: 0 0 0.75em 0;
-  line-height: 1.6;
+  margin: 0 0 0.75em 0 !important;
+  line-height: 1.6 !important;
+  font-size: inherit !important;
 }
 
 .description-view h1,
@@ -14,30 +15,63 @@
 .description-view h4,
 .description-view h5,
 .description-view h6 {
-  margin: 1em 0 0.5em 0;
-  line-height: 1.3;
+  margin: 1em 0 0.5em 0 !important;
+  line-height: 1.3 !important;
+  font-weight: bold !important;
+  font-size: revert !important;
 }
+
+.description-view h1 { font-size: 1.8em !important; }
+.description-view h2 { font-size: 1.5em !important; }
+.description-view h3 { font-size: 1.25em !important; }
+.description-view h4 { font-size: 1.1em !important; }
 
 .description-view ul,
 .description-view ol {
-  margin: 0.5em 0;
-  padding-left: 1.5em;
+  margin: 0.5em 0 !important;
+  padding-left: 1.5em !important;
+  list-style: revert !important;
 }
 
 .description-view li {
-  margin: 0.25em 0;
+  margin: 0.25em 0 !important;
+  display: list-item !important;
+}
+
+.description-view li > p {
+  margin: 0 !important;
 }
 
 .description-view a {
-  color: var(--pf-t--global--color--link--default);
+  color: var(--pf-t--global--color--link--default) !important;
+  text-decoration: underline !important;
 }
 
 .description-view pre {
-  margin: 0.5em 0;
+  margin: 0.5em 0 !important;
+  background: #f4f4f4 !important;
+  padding: 8px !important;
+  border-radius: 4px !important;
+  overflow-x: auto !important;
+}
+
+.description-view code {
+  background: #f4f4f4 !important;
+  padding: 1px 4px !important;
+  border-radius: 3px !important;
+  font-family: monospace !important;
 }
 
 .description-view hr {
-  margin: 1em 0;
-  border: none;
-  border-top: 1px solid #ddd;
+  margin: 1em 0 !important;
+  border: none !important;
+  border-top: 1px solid #ddd !important;
+}
+
+.description-view strong {
+  font-weight: bold !important;
+}
+
+.description-view em {
+  font-style: italic !important;
 }

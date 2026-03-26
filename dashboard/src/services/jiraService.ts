@@ -554,12 +554,7 @@ export async function createIssue(issue: JiraIssue): Promise<JiraIssue> {
   };
 
   if (issue.description) {
-    const rawDesc = issue.description;
-    const isHtml = rawDesc.includes("<p>") || rawDesc.includes("<h");
-    const plainText = isHtml
-      ? rawDesc.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
-      : rawDesc;
-    const paragraphs = plainText.split(/\n+/).filter(Boolean);
+    const paragraphs = issue.description.split(/\n+/).filter((l) => l.trim());
     fields.description = {
       type: "doc",
       version: 1,
@@ -638,12 +633,8 @@ export async function updateIssue(
 
   if (updated.description !== original.description) {
     const rawDesc = updated.description ?? "";
-    const isHtml = rawDesc.includes("<p>") || rawDesc.includes("<h");
-    const plainText = isHtml
-      ? (() => { const tmp = typeof document !== "undefined" ? document.createElement("div") : null; if (tmp) { tmp.innerHTML = rawDesc; return tmp.textContent || ""; } return rawDesc.replace(/<[^>]+>/g, ""); })()
-      : rawDesc;
-    const paragraphs = plainText.split(/\n+/).filter(Boolean);
-    fields.description = plainText.trim()
+    const paragraphs = rawDesc.split(/\n+/).filter((l) => l.trim());
+    fields.description = rawDesc.trim()
       ? {
           type: "doc",
           version: 1,
