@@ -5,3 +5,5 @@ dist
 .vscode
 .cursor
 .cursorrules
+dashboard/run-tests.mjs
+dashboard/src/test-api.ts

@@ -20,9 +20,6 @@ import {
   ExpandableSection,
   Card,
   CardBody,
-  Tabs,
-  Tab,
-  TabTitleText,
   Select,
   SelectOption,
   MenuToggle,
@@ -62,7 +59,7 @@ import {
   Th,
   Td,
 } from "@patternfly/react-table";
-import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon } from "@patternfly/react-icons";
+import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon } from "@patternfly/react-icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
@@ -354,6 +351,51 @@ const HCC_SPRINTS: { name: string; startDate: string; endDate: string }[] = [
   { name: "HCC Sprint 4 2026", startDate: "April 20", endDate: "May 1" },
 ];
 
+function DroppableTab({ droppableId, label, subtitle, isActive, onClick, style }: { droppableId: string; label: string; subtitle?: string; isActive: boolean; onClick: () => void; style?: React.CSSProperties }) {
+  return (
+    <Droppable droppableId={droppableId} type="ISSUE">
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.droppableProps}
+          onClick={onClick}
+          style={{
+            ...style,
+            padding: "8px 16px 10px",
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+            borderBottom: snapshot.isDraggingOver
+              ? "3px solid var(--pf-t--global--color--brand--default)"
+              : isActive
+                ? "3px solid var(--pf-t--global--color--brand--default)"
+                : "3px solid transparent",
+            backgroundColor: snapshot.isDraggingOver
+              ? "var(--pf-t--global--background--color--secondary--default)"
+              : "transparent",
+            fontWeight: isActive ? 600 : 400,
+            outline: snapshot.isDraggingOver
+              ? "2px dashed var(--pf-t--global--color--brand--default)"
+              : "none",
+            outlineOffset: -2,
+            borderRadius: snapshot.isDraggingOver ? 4 : 0,
+            boxShadow: snapshot.isDraggingOver ? "0 0 8px rgba(0,102,204,0.25)" : "none",
+          }}
+        >
+          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+            <span>{label}</span>
+            {subtitle && (
+              <span style={{ fontSize: "0.75em", fontWeight: 400, color: "var(--pf-t--global--text--color--subtle)" }}>
+                {subtitle}
+              </span>
+            )}
+          </span>
+          <div style={{ display: "none" }}>{provided.placeholder}</div>
+        </div>
+      )}
+    </Droppable>
+  );
+}
+
 function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog") => void }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
@@ -366,6 +408,7 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
   });
 
   const totalTickets = tabs.reduce((sum, t) => sum + t.issues.length, 0);
+  const activeTabData = tabs[activeTab];
 
   return (
     <ExpandableSection
@@ -389,39 +432,27 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
       isExpanded={isExpanded}
       onToggle={(_event, expanded) => setIsExpanded(expanded)}
     >
-      <Tabs
-        activeKey={activeTab}
-        onSelect={(_event, key) => setActiveTab(key as number)}
-        aria-label="HCC Sprint tabs"
-        style={{ gap: 32 }}
-      >
+      <div style={{ display: "flex", gap: 8, borderBottom: "1px solid var(--pf-t--global--border--color--default)", marginBottom: 8 }}>
         {tabs.map((tab, idx) => (
-          <Tab
+          <DroppableTab
             key={tab.name}
-            eventKey={idx}
-            style={{ marginRight: 48 }}
-            title={
-              <TabTitleText>
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                  <span>
-                    {tab.name.replace(" 2026", "")}
-                  </span>
-                  {tab.startDate && (
-                    <span style={{ fontSize: "0.75em", fontWeight: 400, color: "var(--pf-t--global--text--color--subtle)" }}>
-                      {tab.startDate} – {tab.endDate}
-                    </span>
-                  )}
-                </span>
-              </TabTitleText>
-            }
-          >
-            <div style={{ padding: "12px 0" }}>
-              <Button variant="primary" size="sm" onClick={() => onCreate(tab.name, tab.state as "active" | "future")}>+ Create story in this sprint</Button>
-            </div>
-            <SprintTable group={tab} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${tab.state}:${tab.name}`} onModify={onModify} onClone={onClone} />
-          </Tab>
+            droppableId={`tab:${tab.state}:${tab.name}`}
+            label={tab.name.replace(" 2026", "")}
+            subtitle={tab.startDate ? `${tab.startDate} – ${tab.endDate}` : undefined}
+            isActive={idx === activeTab}
+            onClick={() => setActiveTab(idx)}
+            style={{ marginRight: 32 }}
+          />
         ))}
-      </Tabs>
+      </div>
+      {activeTabData && (
+        <>
+          <div style={{ padding: "12px 0" }}>
+            <Button variant="primary" size="sm" onClick={() => onCreate(activeTabData.name, activeTabData.state as "active" | "future")}>+ Create story in this sprint</Button>
+          </div>
+          <SprintTable group={activeTabData} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${activeTabData.state}:${activeTabData.name}`} onModify={onModify} onClone={onClone} />
+        </>
+      )}
     </ExpandableSection>
   );
 }
@@ -432,32 +463,53 @@ function BacklogSection({ group, allEpicNames, onClickKey, onModify, onClone, on
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <ExpandableSection
-      toggleContent={
-        <Flex
-          spaceItems={{ default: "spaceItemsSm" }}
-          alignItems={{ default: "alignItemsCenter" }}
+    <Droppable droppableId="backlog-header" type="ISSUE">
+      {(headerProvided, headerSnapshot) => (
+        <div
+          ref={headerProvided.innerRef}
+          {...headerProvided.droppableProps}
+          style={{
+            borderRadius: 6,
+            transition: "all 0.2s ease",
+            border: headerSnapshot.isDraggingOver
+              ? "2px dashed var(--pf-t--global--color--status--warning--default)"
+              : "2px solid transparent",
+            backgroundColor: headerSnapshot.isDraggingOver
+              ? "var(--pf-t--global--background--color--primary--default)"
+              : "transparent",
+            boxShadow: headerSnapshot.isDraggingOver ? "0 0 8px rgba(240,171,0,0.3)" : "none",
+          }}
         >
-          <FlexItem>
-            <Title headingLevel="h3" size="lg">
-              Backlog
-            </Title>
-          </FlexItem>
-          <FlexItem>
-            <Label color="orange" isCompact>
-              {group.issues.length} tickets
-            </Label>
-          </FlexItem>
-        </Flex>
-      }
-      isExpanded={isExpanded}
-      onToggle={(_event, expanded) => setIsExpanded(expanded)}
-    >
-      <div style={{ padding: "12px 0" }}>
-        <Button variant="primary" size="sm" onClick={onCreate}>+ Create story in the backlog</Button>
-      </div>
-      <SprintTable group={group} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId="backlog" onModify={onModify} onClone={onClone} />
-    </ExpandableSection>
+          <ExpandableSection
+            toggleContent={
+              <Flex
+                spaceItems={{ default: "spaceItemsSm" }}
+                alignItems={{ default: "alignItemsCenter" }}
+              >
+                <FlexItem>
+                  <Title headingLevel="h3" size="lg">
+                    Backlog
+                  </Title>
+                </FlexItem>
+                <FlexItem>
+                  <Label color="orange" isCompact>
+                    {group.issues.length} tickets
+                  </Label>
+                </FlexItem>
+              </Flex>
+            }
+            isExpanded={isExpanded}
+            onToggle={(_event, expanded) => setIsExpanded(expanded)}
+          >
+            <div style={{ padding: "12px 0" }}>
+              <Button variant="primary" size="sm" onClick={onCreate}>+ Create story in the backlog</Button>
+            </div>
+            <SprintTable group={group} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId="backlog" onModify={onModify} onClone={onClone} />
+          </ExpandableSection>
+          <div style={{ display: "none" }}>{headerProvided.placeholder}</div>
+        </div>
+      )}
+    </Droppable>
   );
 }
 
@@ -568,13 +620,44 @@ function IssueDetailPanel({
   };
   const handleCancel = () => onClose();
 
+  const insertBullet = () => {
+    setNewComment((prev) => {
+      const lines = prev.split("\n");
+      const lastLine = lines[lines.length - 1];
+      if (lastLine.startsWith("- ")) return prev;
+      const prefix = prev && !prev.endsWith("\n") ? "\n" : "";
+      return prev + prefix + "- ";
+    });
+  };
+
   const addComment = () => {
     const text = newComment.trim();
     if (!text) return;
+
+    const lines = text.split("\n");
+    const htmlParts: string[] = [];
+    let bulletBuffer: string[] = [];
+    const flushBullets = () => {
+      if (bulletBuffer.length) {
+        htmlParts.push("<ul>" + bulletBuffer.map((b) => `<li>${b}</li>`).join("") + "</ul>");
+        bulletBuffer = [];
+      }
+    };
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        bulletBuffer.push(trimmed.slice(2));
+      } else {
+        flushBullets();
+        if (trimmed) htmlParts.push(`<p>${trimmed}</p>`);
+      }
+    }
+    flushBullets();
+
     const comment: JiraComment = {
       author: "You",
       authorAvatar: "",
-      body: text,
+      body: htmlParts.join(""),
       created: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     };
     setDraft((prev) => ({ ...prev, comments: [comment, ...prev.comments] }));
@@ -823,18 +906,39 @@ function IssueDetailPanel({
             isExpanded={commentsExpanded}
             onToggle={(_e, expanded) => setCommentsExpanded(expanded)}
           >
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "flex-start" }}>
-              <TextArea
-                value={newComment}
-                onChange={(_e, val) => setNewComment(val)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addComment(); } }}
-                aria-label="Add a comment"
-                placeholder="Add a comment…"
-                rows={2}
-                autoResize
-                style={{ flex: 1 }}
-              />
-              <Button variant="primary" onClick={addComment} isDisabled={!newComment.trim()} style={{ whiteSpace: "nowrap" }}>Add</Button>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 4 }}>
+                <Tooltip content="Insert bullet list">
+                  <Button variant="plain" size="sm" onClick={insertBullet} aria-label="Insert bullet list" style={{ padding: "2px 6px" }}>
+                    <ListIcon />
+                  </Button>
+                </Tooltip>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <TextArea
+                  value={newComment}
+                  onChange={(_e, val) => setNewComment(val)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      const lines = newComment.split("\n");
+                      const lastLine = lines[lines.length - 1];
+                      if (lastLine.startsWith("- ") || lastLine.startsWith("* ")) {
+                        e.preventDefault();
+                        setNewComment((prev) => prev + "\n- ");
+                        return;
+                      }
+                      e.preventDefault();
+                      addComment();
+                    }
+                  }}
+                  aria-label="Add a comment"
+                  placeholder="Add a comment… (use - for bullet points)"
+                  rows={2}
+                  autoResize
+                  style={{ flex: 1 }}
+                />
+                <Button variant="primary" onClick={addComment} isDisabled={!newComment.trim()} style={{ whiteSpace: "nowrap" }}>Add</Button>
+              </div>
             </div>
 
             <div style={{ maxHeight: 280, overflowY: "auto", paddingRight: 4 }}>
@@ -1111,17 +1215,32 @@ export default function App() {
     setSelectedIssue(issue);
   }, []);
 
+  const DEFAULT_DESCRIPTION_HTML = [
+    "<h3>What</h3>",
+    "<p>[Describe the objective of this task. What deliverable will be produced once it is completed?]</p>",
+    "<h3>Definition of Done</h3>",
+    "<p>This issue should be Closed once the following criteria are met.</p>",
+    "<ul>",
+    "<li>The primary deliverable or artifact is attached or linked to this issue.</li>",
+    "<li>The primary deliverable of this issue has been shared for review with the UXD team members first, followed by the PM and Engineering teams (if appropriate).</li>",
+    "<li>For UI-specific designs (aka things you make in Figma), the primary deliverable has been through a critique review session with at least one other designer.</li>",
+    "<li>Follow-up tasks identified during the review have been created in the parent epic.</li>",
+    "<li>[Include any other criteria that need to be met before closing this issue]</li>",
+    "</ul>",
+  ].join("\n");
+
   const handleClone = useCallback((issue: JiraIssue) => {
     cloneCounter.current += 1;
     const clonedIssue: JiraIssue = {
       ...issue,
       key: `CPUX-NEW-${cloneCounter.current}`,
       summary: `Clone of ${issue.key}`,
+      description: DEFAULT_DESCRIPTION_HTML,
       comments: [],
     };
     setIsCloneMode(true);
     setSelectedIssue(clonedIssue);
-  }, []);
+  }, [DEFAULT_DESCRIPTION_HTML]);
 
   const handleCreateIssue = useCallback((sprintName: string, sprintState: "active" | "future" | "backlog") => {
     cloneCounter.current += 1;
@@ -1143,7 +1262,7 @@ export default function App() {
       assigneeName: "",
       assigneeAvatar: "",
       reporterName: "Kendra Marchant",
-      description: "",
+      description: DEFAULT_DESCRIPTION_HTML,
       dueDate: "",
       comments: [],
     };
@@ -1162,12 +1281,17 @@ export default function App() {
   const handleDragEnd = useCallback((result: DropResult) => {
     const { draggableId, source, destination } = result;
     if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
+    const srcId = source.droppableId;
     const targetId = destination.droppableId;
+    if (srcId === targetId) return;
+
+    const normalize = (id: string) => id.replace(/^(tab|sprint):/, "drop:");
+    if (normalize(srcId) === normalize(targetId)) return;
+
     let targetSprintName: string;
 
-    if (targetId === "backlog") {
+    if (targetId === "backlog" || targetId === "backlog-header") {
       targetSprintName = "Backlog";
       setIssues((prev) =>
         prev.map((issue) =>

@@ -249,6 +249,87 @@ function extractText(adf: unknown): string {
   return adfToHtml(adf);
 }
 
+function htmlToAdf(html: string): Record<string, unknown> {
+  const content: Record<string, unknown>[] = [];
+  const lines = html.split("\n");
+  let inList = false;
+  const listItems: Record<string, unknown>[] = [];
+
+  const flushList = () => {
+    if (listItems.length) {
+      content.push({ type: "bulletList", content: [...listItems] });
+      listItems.length = 0;
+    }
+    inList = false;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const headingMatch = trimmed.match(/^<h(\d)>(.*?)<\/h\d>$/);
+    if (headingMatch) {
+      flushList();
+      content.push({
+        type: "heading",
+        attrs: { level: parseInt(headingMatch[1], 10) },
+        content: [{ type: "text", text: headingMatch[2] }],
+      });
+      continue;
+    }
+
+    const liMatch = trimmed.match(/^<li>(.*?)<\/li>$/);
+    if (liMatch) {
+      inList = true;
+      listItems.push({
+        type: "listItem",
+        content: [{ type: "paragraph", content: [{ type: "text", text: liMatch[1] }] }],
+      });
+      continue;
+    }
+
+    if (trimmed === "<ul>" || trimmed === "</ul>") {
+      if (trimmed === "</ul>") flushList();
+      else inList = true;
+      continue;
+    }
+
+    const pMatch = trimmed.match(/^<p>(.*?)<\/p>$/);
+    if (pMatch) {
+      flushList();
+      content.push({
+        type: "paragraph",
+        content: [{ type: "text", text: pMatch[1] }],
+      });
+      continue;
+    }
+
+    flushList();
+    content.push({
+      type: "paragraph",
+      content: [{ type: "text", text: trimmed }],
+    });
+  }
+  flushList();
+
+  return { type: "doc", version: 1, content };
+}
+
+function descriptionToAdf(desc: string): Record<string, unknown> {
+  const isHtml = /<(?:h[1-6]|p|ul|li)[\s>]/.test(desc);
+  if (isHtml) return htmlToAdf(desc);
+
+  const paragraphs = desc.split(/\n+/).filter((l) => l.trim());
+  return {
+    type: "doc",
+    version: 1,
+    content: paragraphs.map((p) => ({
+      type: "paragraph",
+      content: [{ type: "text", text: p }],
+    })),
+  };
+}
+
 function parseComments(raw: RawComment[]): JiraComment[] {
   return raw.map((c) => ({
     author: c.author.displayName,
@@ -531,15 +612,7 @@ export async function addComment(issueKey: string, body: string): Promise<void> 
   await jiraFetch(`${apiBase()}/rest/api/3/issue/${issueKey}/comment`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({
-      body: {
-        type: "doc",
-        version: 1,
-        content: [
-          { type: "paragraph", content: [{ type: "text", text: body }] },
-        ],
-      },
-    }),
+    body: JSON.stringify({ body: descriptionToAdf(body) }),
   });
 }
 
@@ -554,15 +627,7 @@ export async function createIssue(issue: JiraIssue): Promise<JiraIssue> {
   };
 
   if (issue.description) {
-    const paragraphs = issue.description.split(/\n+/).filter((l) => l.trim());
-    fields.description = {
-      type: "doc",
-      version: 1,
-      content: paragraphs.map((p) => ({
-        type: "paragraph",
-        content: [{ type: "text", text: p }],
-      })),
-    };
+    fields.description = descriptionToAdf(issue.description);
   }
   // Priority is not settable on creation for this project; Jira assigns the default
   const dueDateIso = toDueDate(issue.dueDate);
@@ -633,17 +698,7 @@ export async function updateIssue(
 
   if (updated.description !== original.description) {
     const rawDesc = updated.description ?? "";
-    const paragraphs = rawDesc.split(/\n+/).filter((l) => l.trim());
-    fields.description = rawDesc.trim()
-      ? {
-          type: "doc",
-          version: 1,
-          content: paragraphs.map((p) => ({
-            type: "paragraph",
-            content: [{ type: "text", text: p }],
-          })),
-        }
-      : null;
+    fields.description = rawDesc.trim() ? descriptionToAdf(rawDesc) : null;
   }
 
   if (updated.priority !== original.priority && updated.priority) {
