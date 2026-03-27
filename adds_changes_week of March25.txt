@@ -1,0 +1,76 @@
+Consolepuffs Jira Board — Adds & Changes
+Week of March 25, 2026
+Generated: March 27, 2026
+
+════════════════════════════════════════
+
+NEW FEATURES
+
+1. Board-wide search
+   - Search input in the toolbar filters across all sprints, backlog, and active epics instantly as you type
+   - Searches by Jira key, summary, assignee, reporter, status, epic, activity type, and sprint name
+   - Backlog and Active Epics sections auto-expand when search results are found
+   - "No results" message displayed when nothing matches
+
+2. Cross-sprint drag-and-drop via tab headers
+   - Sprint tab headers are now drop zones — drag a story onto any tab to move it to that sprint
+   - Visual indicator on hover: dashed outline with glow effect (blue for sprints, orange for backlog)
+   - Active tab underline restored after replacing PatternFly's native Tabs with custom droppable tabs
+   - Backlog header is also a droppable target
+
+3. Drag-and-drop now persists to Jira
+   - Every drag-and-drop action calls the moveToSprint API to update the story in Jira
+   - Toast notification confirms success; data reloads automatically on failure
+
+4. Bullet list support in comments
+   - Toolbar button inserts "- " bullet markers in the comment input field
+   - Pressing Enter auto-continues bullets on the next line
+   - Bullets are converted to proper ADF bulletList nodes when sent to Jira
+
+5. Default description template for new and cloned stories
+   - New issues and clones open with a formatted template containing "What" (heading) and "Definition of Done" (heading + bullet list)
+   - Template is converted to structured ADF (headings + bulletList) when saved to Jira
+
+6. HTML-to-ADF conversion
+   - New htmlToAdf and descriptionToAdf functions convert rich HTML from the editor into structured Jira ADF
+   - Supports headings, paragraphs, and bullet lists
+   - Used for descriptions, comments, and the default template
+
+7. Prepend [Activity Type] to new issue titles
+   - When creating or cloning an issue, the chosen activity type is automatically prepended to the title (e.g., "[Explore] Do stuff")
+
+8. UsingThisApp.md setup guide
+   - New teammate onboarding document with prerequisites, step-by-step setup, daily usage, and troubleshooting
+
+════════════════════════════════════════
+
+CHANGES & IMPROVEMENTS
+
+1. Epics excluded from sprint and backlog tables
+   - JQL query now filters out Epic issue types so only stories appear in sprint tabs and backlog
+   - Epics remain visible in the dedicated Active Epics card
+
+2. Description formatting preserved from Jira
+   - PatternFly CSS overrides restore proper heading sizes (h1-h4), bullet/numbered list styles, bold, italic, code blocks, and link styling
+   - Descriptions and comments rendered via PatternFly Content component with dangerouslySetInnerHTML
+
+3. Description only sent to Jira when edited
+   - Added descDirty flag to track whether the user actually modified the description
+   - Prevents accidental corruption of formatted descriptions on save
+
+4. Toast notifications reduced to 5-second auto-dismiss
+   - Previously required manual dismissal or used 15-second timeout
+
+5. Panel resets state between issues
+   - Added key prop to IssueDetailPanel so React remounts with fresh state when switching issues or cloning
+
+════════════════════════════════════════
+
+BUG FIXES
+
+- Fixed description corruption on save — HTML tags were being stripped, concatenating all block elements into a single paragraph
+- Fixed activity type prefix corrupting descriptions on every save
+- Fixed comments displaying raw HTML tags instead of formatted text
+- Fixed PatternFly CSS stripping description formatting (headings, lists, bold, italic)
+- Fixed duplicate droppableId conflict between tab headers and sprint tables causing drag-and-drop failures
+- Fixed drag-and-drop only updating local state without calling the Jira API

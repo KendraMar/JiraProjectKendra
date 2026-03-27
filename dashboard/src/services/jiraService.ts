@@ -249,6 +249,30 @@ function extractText(adf: unknown): string {
   return adfToHtml(adf);
 }
 
+function parseInlineHtml(text: string): Record<string, unknown>[] {
+  const aRe = /<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
+  const nodes: Record<string, unknown>[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = aRe.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      const plain = text.slice(lastIndex, match.index);
+      if (plain) nodes.push({ type: "text", text: plain });
+    }
+    nodes.push({
+      type: "text",
+      text: match[2],
+      marks: [{ type: "link", attrs: { href: match[1] } }],
+    });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    const rest = text.slice(lastIndex);
+    if (rest) nodes.push({ type: "text", text: rest });
+  }
+  return nodes.length ? nodes : [{ type: "text", text }];
+}
+
 function htmlToAdf(html: string): Record<string, unknown> {
   const content: Record<string, unknown>[] = [];
   const lines = html.split("\n");
@@ -273,7 +297,7 @@ function htmlToAdf(html: string): Record<string, unknown> {
       content.push({
         type: "heading",
         attrs: { level: parseInt(headingMatch[1], 10) },
-        content: [{ type: "text", text: headingMatch[2] }],
+        content: parseInlineHtml(headingMatch[2]),
       });
       continue;
     }
@@ -283,7 +307,7 @@ function htmlToAdf(html: string): Record<string, unknown> {
       inList = true;
       listItems.push({
         type: "listItem",
-        content: [{ type: "paragraph", content: [{ type: "text", text: liMatch[1] }] }],
+        content: [{ type: "paragraph", content: parseInlineHtml(liMatch[1]) }],
       });
       continue;
     }
@@ -299,7 +323,7 @@ function htmlToAdf(html: string): Record<string, unknown> {
       flushList();
       content.push({
         type: "paragraph",
-        content: [{ type: "text", text: pMatch[1] }],
+        content: parseInlineHtml(pMatch[1]),
       });
       continue;
     }
@@ -307,12 +331,34 @@ function htmlToAdf(html: string): Record<string, unknown> {
     flushList();
     content.push({
       type: "paragraph",
-      content: [{ type: "text", text: trimmed }],
+      content: parseInlineHtml(trimmed),
     });
   }
   flushList();
 
   return { type: "doc", version: 1, content };
+}
+
+function textWithLinks(text: string): Record<string, unknown>[] {
+  const linkRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  const nodes: Record<string, unknown>[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push({ type: "text", text: text.slice(lastIndex, match.index) });
+    }
+    nodes.push({
+      type: "text",
+      text: match[1],
+      marks: [{ type: "link", attrs: { href: match[2] } }],
+    });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    nodes.push({ type: "text", text: text.slice(lastIndex) });
+  }
+  return nodes.length ? nodes : [{ type: "text", text }];
 }
 
 function descriptionToAdf(desc: string): Record<string, unknown> {
@@ -325,7 +371,7 @@ function descriptionToAdf(desc: string): Record<string, unknown> {
     version: 1,
     content: paragraphs.map((p) => ({
       type: "paragraph",
-      content: [{ type: "text", text: p }],
+      content: textWithLinks(p),
     })),
   };
 }
@@ -614,6 +660,29 @@ export async function addComment(issueKey: string, body: string): Promise<void> 
     headers: authHeaders(),
     body: JSON.stringify({ body: descriptionToAdf(body) }),
   });
+}
+
+export async function attachFile(issueKey: string, file: File): Promise<{ filename: string; url: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await jiraFetch(`${apiBase()}/rest/api/3/issue/${issueKey}/attachments`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${EMAIL}:${API_TOKEN}`)}`,
+      "X-Atlassian-Token": "no-check",
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Attachment upload failed (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  const attachment = data[0];
+  return { filename: attachment.filename, url: attachment.content };
 }
 
 // ── Create issue (full workflow) ──

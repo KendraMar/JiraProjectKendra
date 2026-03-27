@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Set Up the Consolepuffs Jira Board App</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.7;
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 24px;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  h1 { font-size: 2em; border-bottom: 2px solid #e1e4e8; padding-bottom: 12px; margin-top: 0; }
+  h2 { font-size: 1.4em; margin-top: 2em; border-bottom: 1px solid #e1e4e8; padding-bottom: 8px; }
+  hr { border: none; border-top: 1px solid #e1e4e8; margin: 2em 0; }
+  code {
+    background: #f4f4f8;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+  pre {
+    background: #f4f4f8;
+    padding: 14px 18px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  blockquote {
+    border-left: 4px solid #0066cc;
+    margin: 1em 0;
+    padding: 8px 16px;
+    background: #f0f6ff;
+    border-radius: 0 6px 6px 0;
+  }
+  blockquote p { margin: 0; }
+  a { color: #0066cc; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ol { padding-left: 1.5em; }
+  ol li { margin: 6px 0; }
+  ul { padding-left: 1.5em; }
+  ul li { margin: 6px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ddd; padding: 10px 14px; text-align: left; }
+  th { background: #f4f4f8; font-weight: 600; }
+  .intro { font-size: 1.05em; color: #444; }
+</style>
+</head>
+<body>
+
+<h1>How to Set Up the Consolepuffs Jira Board App</h1>
+
+<p class="intro">This guide walks you through cloning the repo, configuring your credentials, and running the app locally. Any changes you make (creating stories, updating fields, adding comments) will show up in Jira under <strong>your</strong> name.</p>
+
+<hr>
+
+<h2>Prerequisites</h2>
+<ul>
+  <li><strong>macOS</strong> (or any OS with a terminal)</li>
+  <li><strong>Node.js 18+</strong> installed — check with <code>node -v</code> in Terminal. If not installed, download from <a href="https://nodejs.org/">nodejs.org</a> or run <code>brew install node</code></li>
+  <li><strong>Git</strong> installed — check with <code>git --version</code>. Comes pre-installed on macOS.</li>
+  <li><strong>A Jira (Atlassian) account</strong> with access to the CPUX project</li>
+</ul>
+
+<hr>
+
+<h2>Step 1: Open Terminal</h2>
+<p>You can find it in <strong>Applications &gt; Utilities &gt; Terminal</strong>, or press <strong>Cmd + Space</strong> and type "Terminal".</p>
+
+<hr>
+
+<h2>Step 2: Clone the Repo</h2>
+<p>Run these commands in Terminal. This downloads the project to your home folder:</p>
+<pre><code>cd ~
+git clone https://github.com/KendraMar/JiraProjectKendra.git</code></pre>
+
+<hr>
+
+<h2>Step 3: Install Dependencies</h2>
+<p>Navigate into the dashboard folder and install the required packages:</p>
+<pre><code>cd ~/JiraProjectKendra/dashboard
+npm install</code></pre>
+<p>This may take a minute. You'll see a progress bar as packages download.</p>
+
+<hr>
+
+<h2>Step 4: Get Your Jira API Token</h2>
+<ol>
+  <li>Go to <a href="https://id.atlassian.com/manage-profile/security/api-tokens">https://id.atlassian.com/manage-profile/security/api-tokens</a> in your browser</li>
+  <li>Log in with your Red Hat Atlassian account</li>
+  <li>Click <strong>Create API token</strong></li>
+  <li>Give it a label (e.g., "Consolepuffs Dashboard")</li>
+  <li><strong>Copy the token</strong> — you'll need it in the next step. You won't be able to see it again after closing the dialog.</li>
+</ol>
+
+<hr>
+
+<h2>Step 5: Create Your <code>.env</code> File</h2>
+<p>Still in Terminal, run this command to open a text editor:</p>
+<pre><code>nano ~/JiraProjectKendra/dashboard/.env</code></pre>
+<p>Paste in the following, replacing the two lines marked with <code>&lt;-- replace</code>:</p>
+<pre><code>VITE_JIRA_CLOUD_ID=2b9e35e3-6bd3-4cec-b838-f4249ee02432
+VITE_JIRA_EMAIL=your-email@redhat.com              &lt;-- replace with your Atlassian email
+VITE_JIRA_API_TOKEN=paste-your-token-here           &lt;-- replace with the token from Step 4
+VITE_JIRA_PROJECT_KEY=CPUX
+VITE_JIRA_COMPONENT=HCC
+VITE_JIRA_BASE_URL=https://redhat.atlassian.net</code></pre>
+<p>Then press <strong>Ctrl + O</strong>, then <strong>Enter</strong> to save, and <strong>Ctrl + X</strong> to exit.</p>
+<blockquote>
+  <p><strong>Important:</strong> The <code>.env</code> file is listed in <code>.gitignore</code> so your credentials are never pushed to GitHub. Each person creates their own local <code>.env</code> file.</p>
+</blockquote>
+
+<hr>
+
+<h2>Step 6: Start the App</h2>
+<p>From the dashboard folder, run:</p>
+<pre><code>cd ~/JiraProjectKendra/dashboard
+npx vite --host</code></pre>
+<p>You should see output like:</p>
+<pre><code>VITE v8.x.x  ready in XXX ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://10.x.x.x:5173/</code></pre>
+
+<hr>
+
+<h2>Step 7: Open the App</h2>
+<p>Open your browser and go to:</p>
+<pre><code>http://localhost:5173/</code></pre>
+<p>You're all set! The dashboard will load your team's HCC sprint stories from Jira.</p>
+
+<hr>
+
+<h2>How It Works</h2>
+<ul>
+  <li>The app uses <strong>your</strong> Jira API token to authenticate all requests. Every action you take (create a story, change a status, add a comment) is attributed to <strong>your</strong> Jira account — just like working directly in Jira.</li>
+  <li>Your email address appears in the masthead so you know which account is active.</li>
+  <li>Data is fetched live from Jira each time you load or refresh the page.</li>
+</ul>
+
+<hr>
+
+<h2>Daily Usage</h2>
+<p>To start the app each day:</p>
+<pre><code>cd ~/JiraProjectKendra/dashboard
+npx vite --host</code></pre>
+<p>Then open <a href="http://localhost:5173/">http://localhost:5173/</a> in your browser.</p>
+<p>To stop the app, press <strong>Ctrl + C</strong> in the Terminal window where it's running.</p>
+
+<hr>
+
+<h2>Pulling Updates</h2>
+<p>When new features are pushed to the repo, pull the latest changes:</p>
+<pre><code>cd ~/JiraProjectKendra
+git pull
+cd dashboard
+npm install
+npx vite --host</code></pre>
+<p>The <code>npm install</code> step ensures any new dependencies are downloaded. If nothing changed in <code>package.json</code>, it will finish instantly.</p>
+
+<hr>
+
+<h2>Troubleshooting</h2>
+<table>
+  <thead>
+    <tr><th>Problem</th><th>Solution</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>command not found: node</code></td><td>Install Node.js from <a href="https://nodejs.org/">nodejs.org</a></td></tr>
+    <tr><td><code>command not found: git</code></td><td>Run <code>xcode-select --install</code> to install Git on macOS</td></tr>
+    <tr><td><code>XSRF check failed (403)</code></td><td>Make sure the app is running via <code>npx vite --host</code> (the dev server proxies API requests to avoid CORS issues)</td></tr>
+    <tr><td><code>Jira API 401</code></td><td>Your API token may have expired. Create a new one at <a href="https://id.atlassian.com/manage-profile/security/api-tokens">Atlassian API tokens</a> and update your <code>.env</code> file</td></tr>
+    <tr><td><code>site can't be reached</code></td><td>The dev server isn't running. Start it with <code>npx vite --host</code> from the <code>dashboard/</code> folder</td></tr>
+    <tr><td>Page loads but no data appears</td><td>Check that your <code>.env</code> file has the correct email and token, and that you have access to the CPUX project in Jira</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Questions?</h2>
+<p>Reach out to Kendra Marchant (<a href="mailto:kmarchan@redhat.com">kmarchan@redhat.com</a>) for help getting set up.</p>
+
+</body>
+</html>

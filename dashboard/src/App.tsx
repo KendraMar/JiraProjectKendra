@@ -49,6 +49,7 @@ import {
   AlertGroup,
   AlertActionCloseButton,
   Tooltip,
+  SearchInput,
 } from "@patternfly/react-core";
 import { FilterIcon } from "@patternfly/react-icons";
 import {
@@ -59,11 +60,11 @@ import {
   Th,
   Td,
 } from "@patternfly/react-table";
-import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon } from "@patternfly/react-icons";
+import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon, PaperclipIcon, LinkIcon, PlusCircleIcon } from "@patternfly/react-icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
-import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint } from "./services/jiraService";
+import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, attachFile } from "./services/jiraService";
 
 const JIRA_CPUX_BOARD_URL =
   "https://redhat.atlassian.net/jira/software/c/projects/CPUX/boards/6195";
@@ -459,8 +460,9 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
 
 // ── Backlog section ──
 
-function BacklogSection({ group, allEpicNames, onClickKey, onModify, onClone, onCreate }: { group: SprintGroup; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: () => void }) {
+function BacklogSection({ group, allEpicNames, onClickKey, onModify, onClone, onCreate, forceExpand }: { group: SprintGroup; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: () => void; forceExpand?: boolean }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const expanded = forceExpand || isExpanded;
 
   return (
     <Droppable droppableId="backlog-header" type="ISSUE">
@@ -498,8 +500,8 @@ function BacklogSection({ group, allEpicNames, onClickKey, onModify, onClone, on
                 </FlexItem>
               </Flex>
             }
-            isExpanded={isExpanded}
-            onToggle={(_event, expanded) => setIsExpanded(expanded)}
+            isExpanded={expanded}
+            onToggle={(_event, exp) => setIsExpanded(exp)}
           >
             <div style={{ padding: "12px 0" }}>
               <Button variant="primary" size="sm" onClick={onCreate}>+ Create story in the backlog</Button>
@@ -537,24 +539,62 @@ function PanelSelect({
   options,
   onSelect,
   highlight = false,
+  typeAhead = false,
 }: {
   label: string;
   value: string;
   options: { value: string; label: string }[];
   onSelect: (value: string) => void;
   highlight?: boolean;
+  typeAhead?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [filterText, setFilterText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filteredOptions = typeAhead && filterText
+    ? options.filter((o) => o.label.toLowerCase().includes(filterText.toLowerCase()))
+    : options;
+
+  const displayValue = options.find((o) => o.value === value)?.label || value;
+
+  const handleOpen = () => {
+    setIsOpen((prev) => !prev);
+    if (!isOpen) {
+      setFilterText("");
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  };
 
   const toggle = (toggleRef: React.Ref<MenuToggleElement>) => (
     <MenuToggle
       ref={toggleRef}
-      onClick={() => setIsOpen((prev) => !prev)}
+      onClick={handleOpen}
       isExpanded={isOpen}
       isFullWidth
       style={highlight ? { color: "var(--pf-t--global--color--status--danger--default)" } : undefined}
     >
-      {value || `Select ${label}`}
+      {typeAhead && isOpen ? (
+        <input
+          ref={inputRef}
+          type="text"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          placeholder={displayValue || `Search ${label}…`}
+          style={{
+            border: "none",
+            outline: "none",
+            background: "transparent",
+            width: "100%",
+            fontSize: "inherit",
+            fontFamily: "inherit",
+            color: "inherit",
+          }}
+        />
+      ) : (
+        displayValue || `Select ${label}`
+      )}
     </MenuToggle>
   );
 
@@ -564,15 +604,26 @@ function PanelSelect({
       aria-label={label}
       isOpen={isOpen}
       selected={value}
-      onSelect={(_event, val) => { onSelect(val as string); setIsOpen(false); }}
-      onOpenChange={setIsOpen}
+      onSelect={(_event, val) => {
+        onSelect(val as string);
+        setIsOpen(false);
+        setFilterText("");
+      }}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) setFilterText("");
+      }}
       toggle={toggle}
     >
-      {options.map((opt) => (
-        <SelectOption key={opt.value} value={opt.value} isSelected={value === opt.value}>
-          {opt.label}
-        </SelectOption>
-      ))}
+      {filteredOptions.length === 0 ? (
+        <SelectOption isDisabled value="__no_match__">No matches</SelectOption>
+      ) : (
+        filteredOptions.map((opt) => (
+          <SelectOption key={opt.value} value={opt.value} isSelected={value === opt.value}>
+            {opt.label}
+          </SelectOption>
+        ))
+      )}
     </Select>
   );
 }
@@ -606,6 +657,8 @@ function IssueDetailPanel({
   const [commentsExpanded, setCommentsExpanded] = useState(true);
   const [newComment, setNewComment] = useState("");
   const [editingDesc, setEditingDesc] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [plainDesc, setPlainDesc] = useState("");
   const [descDirty, setDescDirty] = useState(false);
 
@@ -630,16 +683,50 @@ function IssueDetailPanel({
     });
   };
 
+  const insertUrl = () => {
+    const url = window.prompt("Enter URL:");
+    if (!url) return;
+    const label = window.prompt("Link text (leave blank to use URL):", "") || url;
+    setNewComment((prev) => {
+      const separator = prev && !prev.endsWith("\n") && !prev.endsWith(" ") ? " " : "";
+      return prev + separator + `[${label}](${url})`;
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length || !issue.key || isClone) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const result = await attachFile(issue.key, file);
+        setNewComment((prev) => {
+          const separator = prev && !prev.endsWith("\n") ? "\n" : "";
+          return prev + separator + `[📎 ${result.filename}](${result.url})`;
+        });
+      }
+    } catch (err) {
+      console.error("File upload failed", err);
+      alert(`Upload failed: ${(err as Error).message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const addComment = () => {
     const text = newComment.trim();
     if (!text) return;
+
+    const linkify = (s: string) =>
+      s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
     const lines = text.split("\n");
     const htmlParts: string[] = [];
     let bulletBuffer: string[] = [];
     const flushBullets = () => {
       if (bulletBuffer.length) {
-        htmlParts.push("<ul>" + bulletBuffer.map((b) => `<li>${b}</li>`).join("") + "</ul>");
+        htmlParts.push("<ul>" + bulletBuffer.map((b) => `<li>${linkify(b)}</li>`).join("") + "</ul>");
         bulletBuffer = [];
       }
     };
@@ -649,7 +736,7 @@ function IssueDetailPanel({
         bulletBuffer.push(trimmed.slice(2));
       } else {
         flushBullets();
-        if (trimmed) htmlParts.push(`<p>${trimmed}</p>`);
+        if (trimmed) htmlParts.push(`<p>${linkify(trimmed)}</p>`);
       }
     }
     flushBullets();
@@ -698,7 +785,10 @@ function IssueDetailPanel({
   const memberOptions = allMembers.map((m) => ({ value: m, label: m }));
   const activityOptions = ACTIVITY_TYPES.map((a) => ({ value: a, label: a }));
   const spOptions = STORY_POINT_OPTIONS.map((sp) => ({ value: String(sp.value), label: sp.label }));
-  const epicSelectOptions = allEpicNames.map((e) => ({ value: e, label: e }));
+  const epicSelectOptions = allEpicNames.map((e) => {
+    const key = epicNameToKey.get(e) ?? "";
+    return { value: e, label: key ? `${key}  —  ${e}` : e };
+  });
 
   return (
     <DrawerPanelContent widths={{ default: "width_50" }}>
@@ -893,7 +983,7 @@ function IssueDetailPanel({
               <DescriptionListGroup>
                 <DescriptionListTerm>Epic</DescriptionListTerm>
                 <DescriptionListDescription>
-                  <PanelSelect label="Epic" value={draft.epicName} options={epicSelectOptions} onSelect={(v) => patch({ epicName: v, epicKey: epicNameToKey.get(v) ?? "" })} highlight={isClone} />
+                  <PanelSelect label="Epic" value={draft.epicName} options={epicSelectOptions} onSelect={(v) => patch({ epicName: v, epicKey: epicNameToKey.get(v) ?? "" })} highlight={isClone} typeAhead />
                 </DescriptionListDescription>
               </DescriptionListGroup>
             </DescriptionList>
@@ -907,10 +997,35 @@ function IssueDetailPanel({
             onToggle={(_e, expanded) => setCommentsExpanded(expanded)}
           >
             <div style={{ marginBottom: 12 }}>
-              <div style={{ marginBottom: 4 }}>
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                multiple
+                onChange={handleFileUpload}
+              />
+              <div style={{ marginBottom: 4, display: "flex", gap: 2 }}>
                 <Tooltip content="Insert bullet list">
                   <Button variant="plain" size="sm" onClick={insertBullet} aria-label="Insert bullet list" style={{ padding: "2px 6px" }}>
                     <ListIcon />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Insert link">
+                  <Button variant="plain" size="sm" onClick={insertUrl} aria-label="Insert link" style={{ padding: "2px 6px" }}>
+                    <LinkIcon />
+                  </Button>
+                </Tooltip>
+                <Tooltip content={isClone ? "Save the issue first to attach files" : "Attach file"}>
+                  <Button
+                    variant="plain"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Attach file"
+                    style={{ padding: "2px 6px" }}
+                    isDisabled={isClone || uploading}
+                    isLoading={uploading}
+                  >
+                    <PaperclipIcon />
                   </Button>
                 </Tooltip>
               </div>
@@ -932,7 +1047,7 @@ function IssueDetailPanel({
                     }
                   }}
                   aria-label="Add a comment"
-                  placeholder="Add a comment… (use - for bullet points)"
+                  placeholder="Add a comment… (use - for bullets, [text](url) for links)"
                   rows={2}
                   autoResize
                   style={{ flex: 1 }}
@@ -1081,7 +1196,7 @@ function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: Jira
           </Td>
           <Td dataLabel="Epic">
             {issue.epicName ? (
-              <Content component="small">{issue.epicName}</Content>
+              <Content component="small">{issue.epicKey ? `${issue.epicKey}  —  ` : ""}{issue.epicName}</Content>
             ) : (
               <Content component="small">--</Content>
             )}
@@ -1155,6 +1270,8 @@ export default function App() {
   const [isCloneMode, setIsCloneMode] = useState(false);
   const [isBacklogCreate, setIsBacklogCreate] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; title: string; variant: "success" | "danger" }[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [epicsExpanded, setEpicsExpanded] = useState(false);
   const cloneCounter = useRef(0);
   const toastIdRef = useRef(0);
 
@@ -1179,7 +1296,32 @@ export default function App() {
     loadData();
   }, [loadData]);
 
-  const sprintGroups = groupBySprint(issues);
+  const normalizedSearch = searchTerm.toLowerCase().trim();
+
+  const filteredIssues = useMemo(() => {
+    if (!normalizedSearch) return issues;
+    return issues.filter((i) =>
+      i.key.toLowerCase().includes(normalizedSearch) ||
+      i.summary.toLowerCase().includes(normalizedSearch) ||
+      i.assigneeName.toLowerCase().includes(normalizedSearch) ||
+      i.reporterName.toLowerCase().includes(normalizedSearch) ||
+      i.status.toLowerCase().includes(normalizedSearch) ||
+      i.epicName.toLowerCase().includes(normalizedSearch) ||
+      i.activityType.toLowerCase().includes(normalizedSearch) ||
+      i.sprintName.toLowerCase().includes(normalizedSearch)
+    );
+  }, [issues, normalizedSearch]);
+
+  const filteredEpics = useMemo(() => {
+    if (!normalizedSearch) return epics;
+    return epics.filter((e) =>
+      e.key.toLowerCase().includes(normalizedSearch) ||
+      e.summary.toLowerCase().includes(normalizedSearch) ||
+      e.status.toLowerCase().includes(normalizedSearch)
+    );
+  }, [epics, normalizedSearch]);
+
+  const sprintGroups = groupBySprint(filteredIssues);
 
   const allEpicNames = useMemo(
     () => epics.map((e) => e.summary).sort(),
@@ -1427,6 +1569,15 @@ export default function App() {
             </ToolbarGroup>
             <ToolbarGroup align={{ default: "alignEnd" }}>
               <ToolbarItem>
+                <SearchInput
+                  placeholder="Search stories, epics, people…"
+                  value={searchTerm}
+                  onChange={(_e, val) => setSearchTerm(val)}
+                  onClear={() => setSearchTerm("")}
+                  style={{ minWidth: 280 }}
+                />
+              </ToolbarItem>
+              <ToolbarItem>
                 <Button
                   variant="secondary"
                   icon={<ExternalLinkAltIcon />}
@@ -1501,6 +1652,7 @@ export default function App() {
                       onModify={handleModify}
                       onClone={handleClone}
                       onCreate={() => handleCreateIssue("Backlog", "backlog")}
+                      forceExpand={!!normalizedSearch}
                     />
                   </CardBody>
                 </Card>
@@ -1511,6 +1663,8 @@ export default function App() {
               <Card>
                 <CardBody>
                   <ExpandableSection
+                    isExpanded={!!normalizedSearch || epicsExpanded}
+                    onToggle={(_e, exp) => setEpicsExpanded(exp)}
                     toggleContent={
                       <Flex
                         spaceItems={{ default: "spaceItemsSm" }}
@@ -1523,12 +1677,23 @@ export default function App() {
                         </FlexItem>
                         <FlexItem>
                           <Label color="purple" isCompact>
-                            {epics.length}
+                            {filteredEpics.length}
                           </Label>
                         </FlexItem>
                       </Flex>
                     }
                   >
+                    <div style={{ padding: "12px 0" }}>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        icon={<PlusCircleIcon />}
+                        component="a"
+                        href={`cursor://file/${import.meta.env.VITE_PROJECT_PATH || ""}/epic-template.md`}
+                      >
+                        Create epic in Cursor
+                      </Button>
+                    </div>
                     <Table aria-label="Active Epics table" variant="compact">
                       <Thead>
                         <Tr>
@@ -1538,7 +1703,7 @@ export default function App() {
                         </Tr>
                       </Thead>
                       <Tbody>
-                        {epics.map((epic) => (
+                        {filteredEpics.map((epic) => (
                           <Tr key={epic.key}>
                             <Td dataLabel="Key">
                               <a href={browseUrl(epic.key)} target="_blank" rel="noopener noreferrer">
@@ -1568,6 +1733,21 @@ export default function App() {
                 </CardBody>
               </Card>
             </FlexItem>
+              {normalizedSearch && filteredIssues.length === 0 && filteredEpics.length === 0 && (
+                <FlexItem>
+                  <Card>
+                    <CardBody>
+                      <Flex justifyContent={{ default: "justifyContentCenter" }} style={{ padding: 32 }}>
+                        <FlexItem>
+                          <Content component="p" style={{ fontSize: "1.1rem", color: "var(--pf-t--global--text--color--subtle)" }}>
+                            No results found for &ldquo;{searchTerm}&rdquo;
+                          </Content>
+                        </FlexItem>
+                      </Flex>
+                    </CardBody>
+                  </Card>
+                </FlexItem>
+              )}
             </Flex>
           </DragDropContext>
         </PageSection>
