@@ -3,7 +3,8 @@ node_modules
 dist
 .DS_Store
 .vscode
-.cursor
+.cursor/*
+!.cursor/skills/
 .cursorrules
 dashboard/run-tests.mjs
 dashboard/src/test-api.ts

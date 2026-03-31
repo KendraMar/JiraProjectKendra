@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>UX Audit Report — Consolepuffs Jira Board</title>
+<style>
+  :root {
+    --red: #c9190b; --orange: #f0ab00; --blue: #0066cc;
+    --green: #3e8635; --grey: #6a6e73; --purple: #6753ac;
+    --bg: #fff; --text: #151515; --border: #d2d2d2; --code-bg: #f0f0f0;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "RedHatText","Helvetica Neue",Arial,sans-serif; max-width: 1000px; margin: 0 auto; padding: 24px 40px; color: var(--text); line-height: 1.6; }
+  h1 { font-size: 2em; color: var(--blue); border-bottom: 3px solid var(--blue); padding-bottom: 6px; margin-top: 1.5em; }
+  h2 { font-size: 1.5em; color: #333; margin-top: 1.6em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  h3 { font-size: 1.15em; color: #444; margin-top: 1.2em; }
+  .cover { text-align: center; margin-bottom: 50px; padding: 50px 0 30px; border-bottom: 3px solid var(--blue); }
+  .cover h1 { border: none; font-size: 2.4em; margin: 0; }
+  .cover .subtitle { font-size: 1.2em; color: var(--grey); margin-top: 6px; }
+  .cover .meta { margin-top: 14px; font-size: 0.92em; color: #777; }
+
+  .summary-box { background: #f8f8f8; border: 1px solid var(--border); border-radius: 8px; padding: 20px 28px; margin: 20px 0 30px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; text-align: center; }
+  .summary-card { padding: 12px; border-radius: 6px; }
+  .summary-card .count { font-size: 2em; font-weight: 700; }
+  .summary-card .label { font-size: 0.85em; margin-top: 2px; }
+  .sc-critical { background: #faeae8; color: var(--red); }
+  .sc-high { background: #fff3e0; color: #c46200; }
+  .sc-medium { background: #fff8e1; color: #8a6d00; }
+  .sc-low { background: #e8f5e9; color: var(--green); }
+  .sc-opp { background: #ede7f6; color: var(--purple); }
+
+  .finding { border: 1px solid var(--border); border-radius: 8px; margin: 14px 0; padding: 16px 20px; page-break-inside: avoid; }
+  .finding-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .sev { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.82em; font-weight: 700; color: white; }
+  .sev-critical { background: var(--red); }
+  .sev-high { background: #c46200; }
+  .sev-medium { background: var(--orange); color: #333; }
+  .sev-low { background: var(--green); }
+  .sev-opportunity { background: var(--purple); }
+  .cat { display: inline-block; background: #e7f1fa; color: var(--blue); padding: 2px 8px; border-radius: 12px; font-size: 0.82em; font-weight: 600; }
+  .finding-title { font-weight: 600; font-size: 1.02em; }
+  .finding p { margin: 4px 0; font-size: 0.93em; }
+  .finding .loc { color: var(--grey); font-family: monospace; font-size: 0.88em; }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.92em; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+  th { background: var(--code-bg); font-weight: 600; }
+  code { background: var(--code-bg); padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 0.88em; }
+
+  @media print {
+    body { padding: 0 16px; font-size: 10pt; }
+    .finding { page-break-inside: avoid; }
+    h1, h2 { page-break-after: avoid; }
+    .cover { page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>UX Audit Report</h1>
+  <div class="subtitle">Consolepuffs Jira Board</div>
+  <div class="meta">Generated March 31, 2026 &mdash; Using the <code>ux-audit</code> Cursor Skill</div>
+</div>
+
+<!-- SUMMARY -->
+<h1>Executive Summary</h1>
+<div class="summary-box">
+  <div class="summary-grid">
+    <div class="summary-card sc-critical"><div class="count">1</div><div class="label">Critical</div></div>
+    <div class="summary-card sc-high"><div class="count">12</div><div class="label">High</div></div>
+    <div class="summary-card sc-medium"><div class="count">24</div><div class="label">Medium</div></div>
+    <div class="summary-card sc-low"><div class="count">11</div><div class="label">Low</div></div>
+    <div class="summary-card sc-opp"><div class="count">7</div><div class="label">Opportunities</div></div>
+  </div>
+</div>
+
+<table>
+  <tr><th>Category</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Opportunity</th></tr>
+  <tr><td>Accessibility</td><td>0</td><td>4</td><td>6</td><td>4</td><td>0</td></tr>
+  <tr><td>Interaction Smoothness</td><td>1</td><td>4</td><td>5</td><td>2</td><td>0</td></tr>
+  <tr><td>Workflow Efficiency</td><td>0</td><td>1</td><td>1</td><td>0</td><td>5</td></tr>
+  <tr><td>Corner Case Handling</td><td>0</td><td>3</td><td>8</td><td>3</td><td>0</td></tr>
+  <tr><td>PatternFly Compliance</td><td>0</td><td>3</td><td>7</td><td>6</td><td>2</td></tr>
+</table>
+
+<!-- ============================================================= -->
+<h1>Critical Findings</h1>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-critical">Critical</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Body-level click-to-close drawer dismisses panel during normal use</span>
+  </div>
+  <p class="loc">App.tsx — DrawerContentBody onClick (~line 2107)</p>
+  <p><strong>Issue:</strong> The entire main content area has an <code>onClick</code> handler that closes the issue/epic drawer. Clicks from toolbar buttons, search, table rows, and other controls bubble up and trigger panel close.</p>
+  <p><strong>Impact:</strong> Users accidentally lose their editing context when clicking Refresh, Search, or any interactive element while the panel is open. Keyboard users have no equivalent close mechanism. Unsaved work in the panel can feel "lost" even though draft state persists.</p>
+  <p><strong>Recommendation:</strong> Replace body-level close with either (a) <code>event.target === event.currentTarget</code> check to only close on direct backdrop clicks, (b) a semi-transparent overlay/scrim behind the drawer, or (c) Escape key close with proper focus management. Add a "discard changes?" confirmation if <code>hasChanges</code> is true.</p>
+</div>
+
+<!-- ============================================================= -->
+<h1>High Findings</h1>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Sprint tabs are not keyboard accessible</span>
+  </div>
+  <p class="loc">App.tsx — DroppableTab (~lines 376–418), SprintTabs (~468–479)</p>
+  <p><strong>Issue:</strong> Sprint navigation uses <code>&lt;div onClick&gt;</code> with no <code>role="tab"</code>, <code>tabIndex</code>, <code>aria-selected</code>, or keyboard event handlers (Enter/Space/Arrow keys).</p>
+  <p><strong>Impact:</strong> Keyboard-only and assistive technology users cannot switch between sprints.</p>
+  <p><strong>Recommendation:</strong> Use PatternFly <code>Tabs</code>/<code>Tab</code> components, or add <code>role="tab"</code>, <code>tabIndex</code>, <code>aria-selected</code>, and roving focus with Arrow/Home/End key handling.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Issue key uses fake link instead of button</span>
+  </div>
+  <p class="loc">App.tsx — IssueRow (~lines 1277–1283)</p>
+  <p><strong>Issue:</strong> The Jira number uses <code>&lt;a href="#"&gt;</code> with <code>preventDefault</code>. It looks like a link but performs an in-app action (opening the detail panel).</p>
+  <p><strong>Impact:</strong> Screen readers announce it as a navigation link; keyboard behavior differs from expectations.</p>
+  <p><strong>Recommendation:</strong> Use <code>Button variant="link"</code> or a native <code>&lt;button&gt;</code> styled as a link.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Description editor has no accessible name or role</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel contentEditable (~lines 984–1003)</p>
+  <p><strong>Issue:</strong> The <code>contentEditable</code> div has no <code>role="textbox"</code>, <code>aria-multiline</code>, or <code>aria-label</code>.</p>
+  <p><strong>Impact:</strong> Screen reader users cannot discover or identify the description editing area.</p>
+  <p><strong>Recommendation:</strong> Add <code>role="textbox"</code>, <code>aria-multiline="true"</code>, and <code>aria-label="Issue description"</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Due date input has no label association</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel (~lines 1033–1058)</p>
+  <p><strong>Issue:</strong> The native <code>&lt;input type="date"&gt;</code> is not connected to its <code>DescriptionListTerm</code> label via <code>id</code>/<code>htmlFor</code> or <code>aria-labelledby</code>.</p>
+  <p><strong>Impact:</strong> Assistive technology may not associate the label with the control.</p>
+  <p><strong>Recommendation:</strong> Add <code>id</code>/<code>htmlFor</code> pairing or use PatternFly <code>DatePicker</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">No error handling on initial data load</span>
+  </div>
+  <p class="loc">App.tsx — loadData (~lines 1735–1750)</p>
+  <p><strong>Issue:</strong> <code>try/finally</code> with no <code>catch</code>. API failures leave the dashboard empty or showing stale static data with no user-facing error or retry.</p>
+  <p><strong>Impact:</strong> Users see a blank or demo-data dashboard with no explanation when the API is down or credentials are wrong.</p>
+  <p><strong>Recommendation:</strong> Add <code>catch</code>, set an error state, and show an <code>Alert</code> with retry button.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">No loading indicator when opening detail panel</span>
+  </div>
+  <p class="loc">App.tsx — handleModify (~lines 1817–1829)</p>
+  <p><strong>Issue:</strong> <code>fetchSingleIssue</code> runs with no spinner or skeleton in the drawer while fresh data loads.</p>
+  <p><strong>Impact:</strong> Users see stale fields briefly or assume the UI froze on slow networks.</p>
+  <p><strong>Recommendation:</strong> Show a <code>Spinner</code> or skeleton in the panel until <code>fetchSingleIssue</code> resolves.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Comments are local-only until Save — no indication to user</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel addComment (~lines 797–835)</p>
+  <p><strong>Issue:</strong> Clicking "Add" appends the comment to local draft state only. The comment is not sent to Jira until the user clicks Save. There is no visual indication of this.</p>
+  <p><strong>Impact:</strong> Users believe the comment was posted; data loss if they close the panel without saving.</p>
+  <p><strong>Recommendation:</strong> Either post comments via API immediately on Add (with loading/error states), or add an inline hint: "Comments are saved when you click Save."</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Drag-and-drop has no in-flight loading state</span>
+  </div>
+  <p class="loc">App.tsx — handleDragEnd (~lines 1895–1935)</p>
+  <p><strong>Issue:</strong> Optimistic UI update happens immediately, but there is no per-row or global loading indicator during the <code>moveToSprint</code> API call.</p>
+  <p><strong>Impact:</strong> Users may initiate additional drags before the first completes; concurrent operations could conflict.</p>
+  <p><strong>Recommendation:</strong> Add a "moving..." state (row dimming or global flag) and disable drag until the API settles.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Silent API failures on sprint move, status transition, and comment add</span>
+  </div>
+  <p class="loc">jiraService.ts — moveToSprint, transitionIssue, addComment (~lines 773–816)</p>
+  <p><strong>Issue:</strong> These API calls never check <code>res.ok</code>. HTTP 400/403/500 responses are silently ignored, and the UI shows success toasts.</p>
+  <p><strong>Impact:</strong> Users believe operations succeeded when Jira rejected them. Board and Jira diverge.</p>
+  <p><strong>Recommendation:</strong> Check <code>res.ok</code> after every mutation; throw on failure; surface error toasts.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Post-create/update sub-operations fail silently</span>
+  </div>
+  <p class="loc">jiraService.ts — createIssue/updateIssue Promise.allSettled (~lines 900, 998)</p>
+  <p><strong>Issue:</strong> Sprint move, status transition, and comment creation run via <code>Promise.allSettled</code> after issue create/update. Failures are not inspected or surfaced.</p>
+  <p><strong>Impact:</strong> Issue created but wrong sprint, wrong status, or missing comments — user told "success."</p>
+  <p><strong>Recommendation:</strong> Inspect <code>allSettled</code> results and surface partial-failure warnings in the toast.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Static fallback data shown without explanation</span>
+  </div>
+  <p class="loc">jiraService.ts — fetchIssues/fetchEpics (~lines 649–660, 1048–1084)</p>
+  <p><strong>Issue:</strong> On API error, services silently return hardcoded static data. No banner or indication that the user is seeing demo data.</p>
+  <p><strong>Impact:</strong> Users may act on stale/fake data believing it's live.</p>
+  <p><strong>Recommendation:</strong> Show a persistent warning banner when fallback data is active. Provide a retry option.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Custom tab bar instead of PatternFly Tabs</span>
+  </div>
+  <p class="loc">App.tsx — DroppableTab (~lines 376–418), SprintTabs (~468–479)</p>
+  <p><strong>Issue:</strong> Sprint tabs are custom divs with manual <code>borderBottom</code>, <code>fontWeight</code>, and <code>boxShadow</code> styling using hardcoded <code>rgba</code> values.</p>
+  <p><strong>Impact:</strong> Duplicates PF tab semantics and styling; won't track theme changes; missing accessibility.</p>
+  <p><strong>Recommendation:</strong> Use PF <code>Tabs</code>/<code>Tab</code>/<code>TabTitleText</code>. If drag-drop requires each tab to be a Droppable, document the exception but still align with PF tab tokens.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">35 !important declarations in App.css</span>
+  </div>
+  <p class="loc">App.css — entire file</p>
+  <p><strong>Issue:</strong> 35 <code>!important</code> overrides on PF table cells and description prose, plus hardcoded hex colors (<code>#f4f4f4</code>, <code>#ddd</code>) instead of PF CSS variables.</p>
+  <p><strong>Impact:</strong> Fights PF cascade; will break on PF version updates; doesn't track theme tokens.</p>
+  <p><strong>Recommendation:</strong> Replace hardcoded colors with PF variables. Use PF <code>Table</code> variant/modifier props where possible instead of global <code>!important</code> padding.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-high">High</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Fake link pattern for issue key (PF + a11y overlap)</span>
+  </div>
+  <p class="loc">App.tsx — IssueRow (~lines 1277–1283)</p>
+  <p><strong>Issue:</strong> <code>&lt;a href="#"&gt;</code> with <code>preventDefault</code> — should be <code>Button variant="link"</code>.</p>
+  <p><strong>Impact:</strong> Violates both PF component usage and WCAG link/button semantics.</p>
+  <p><strong>Recommendation:</strong> <code>&lt;Button variant="link" onClick={...}&gt;{issue.key}&lt;/Button&gt;</code></p>
+</div>
+
+<!-- ============================================================= -->
+<h1>Medium Findings</h1>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">FormGroup labels not wired to PanelSelect controls</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel/EpicCreatePanel FormGroup + PanelSelect (~lines 919–934)</p>
+  <p><strong>Issue:</strong> <code>FormGroup</code> sets <code>fieldId</code> but <code>PanelSelect</code>'s <code>MenuToggle</code> doesn't use that id.</p>
+  <p><strong>Recommendation:</strong> Pass <code>id</code> through to <code>MenuToggle</code> or use <code>aria-labelledby</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Type-ahead input has no accessible name</span>
+  </div>
+  <p class="loc">App.tsx — PanelSelect (~lines 609–626)</p>
+  <p><strong>Issue:</strong> Inner <code>&lt;input type="text"&gt;</code> relies on placeholder only — not a valid accessible name.</p>
+  <p><strong>Recommendation:</strong> Add <code>aria-label="Search {label}"</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Due date urgency icons use title attribute only</span>
+  </div>
+  <p class="loc">App.tsx — dueDateIcon (~lines 77–89)</p>
+  <p><strong>Issue:</strong> Overdue/due-soon icons rely on <code>title</code> for meaning — inconsistently exposed by screen readers.</p>
+  <p><strong>Recommendation:</strong> Use PF <code>Tooltip</code> and add <code>aria-label</code> on a wrapper.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Disabled Save wrapped in span with tabIndex</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel footer (~lines 1203–1216)</p>
+  <p><strong>Issue:</strong> Focusable <code>&lt;span tabIndex={0}&gt;</code> wrapping disabled button — no role, unclear to screen readers.</p>
+  <p><strong>Recommendation:</strong> Use PF pattern for tooltip on disabled controls, or show inline helper text.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">EpicCreatePanel "Data informed?" toggle label mismatch</span>
+  </div>
+  <p class="loc">App.tsx — EpicCreatePanel (~lines 1520–1524)</p>
+  <p><strong>Recommendation:</strong> Set <code>aria-label="Data informed?"</code> on the <code>MenuToggle</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Search input relies on placeholder for accessible name</span>
+  </div>
+  <p class="loc">App.tsx — SearchInput (~lines 2133–2139)</p>
+  <p><strong>Recommendation:</strong> Add <code>aria-label="Search stories, epics, and people"</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Search input not debounced</span>
+  </div>
+  <p class="loc">App.tsx — SearchInput + useMemo filters (~lines 1763–1786)</p>
+  <p><strong>Issue:</strong> Every keystroke recomputes all filters. Client-side only today, but can cause jank with large lists.</p>
+  <p><strong>Recommendation:</strong> Debounce <code>setSearchTerm</code> by 150–300ms.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Update failure shows toast only — no inline recovery</span>
+  </div>
+  <p class="loc">App.tsx — handleIssueUpdate (~lines 1940–1978)</p>
+  <p><strong>Issue:</strong> On save failure, a toast appears for 5 seconds. No persistent inline error or retry prompt in the panel.</p>
+  <p><strong>Recommendation:</strong> Add persistent inline <code>Alert</code> near the Save button until retry or dismiss.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Drag failure rollback refetches entire dataset</span>
+  </div>
+  <p class="loc">App.tsx — handleDragEnd error path (~lines 1931–1934)</p>
+  <p><strong>Issue:</strong> On drag failure, <code>loadData()</code> fetches all issues — heavy, and may lose scroll/tab position.</p>
+  <p><strong>Recommendation:</strong> Revert only the affected issue in local state, or refetch a single issue.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">No "last updated" or refresh indicator</span>
+  </div>
+  <p class="loc">App.tsx — useEffect interval (~lines 1756–1761)</p>
+  <p><strong>Issue:</strong> Auto-refresh every 30s with no visible timestamp or indicator that data changed.</p>
+  <p><strong>Recommendation:</strong> Show "Last updated: X seconds ago" or a subtle refresh animation.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">File upload errors use browser alert() instead of toasts</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel uploads (~lines 732–734, 788–790)</p>
+  <p><strong>Recommendation:</strong> Replace <code>alert()</code> with the existing <code>addToast</code> pattern.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Link insertion uses window.prompt dialogs</span>
+  </div>
+  <p class="loc">App.tsx — insertUrl (~lines 761–768)</p>
+  <p><strong>Issue:</strong> Two sequential <code>window.prompt</code> dialogs to enter URL and text — clunky, no validation, breaks PF patterns.</p>
+  <p><strong>Recommendation:</strong> Replace with a small PF <code>Modal</code> or inline form with <code>TextInput</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Inconsistent epic vs. story key click behavior</span>
+  </div>
+  <p class="loc">App.tsx — epics table (~lines 2317–2339) vs IssueRow (~1276–1283)</p>
+  <p><strong>Issue:</strong> Epic key opens Jira in new tab; story key opens the in-app detail panel. Inconsistent mental model.</p>
+  <p><strong>Recommendation:</strong> Align: either both open in-app, or both go to Jira with a secondary action for the alternate.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Empty table says "no tickets" even when filters hide them</span>
+  </div>
+  <p class="loc">App.tsx — SprintTable (~lines 348–352)</p>
+  <p><strong>Issue:</strong> Message is always "No tickets in this sprint yet" even when issues exist but are hidden by column filters.</p>
+  <p><strong>Recommendation:</strong> Branch: "No tickets match your filters" with a "Clear filters" link.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Search crashes on null fields</span>
+  </div>
+  <p class="loc">App.tsx — filteredIssues (~lines 1765–1786)</p>
+  <p><strong>Issue:</strong> <code>.toLowerCase()</code> on <code>summary</code>, <code>assigneeName</code>, etc. without nullish guards. Malformed API data causes runtime crash.</p>
+  <p><strong>Recommendation:</strong> Use <code>(field ?? "").toLowerCase()</code> pattern.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">fetchSingleIssue failure shows stale data without warning</span>
+  </div>
+  <p class="loc">App.tsx — handleModify (~lines 1817–1828)</p>
+  <p><strong>Issue:</strong> If <code>fetchSingleIssue</code> returns null, the panel opens with the list-row snapshot. No indication that data didn't refresh.</p>
+  <p><strong>Recommendation:</strong> Show a warning toast: "Could not refresh — showing cached data."</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">No request timeouts — hung requests hang the UI</span>
+  </div>
+  <p class="loc">jiraService.ts — jiraFetch (~lines 678–680)</p>
+  <p><strong>Issue:</strong> No <code>AbortController</code> or timeout. On slow/dead networks, the UI appears frozen indefinitely.</p>
+  <p><strong>Recommendation:</strong> Add <code>AbortController</code> with a 15–30 second timeout; show timeout error in UI.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Active Epics has no empty state</span>
+  </div>
+  <p class="loc">App.tsx — Epics table (~lines 2308–2342)</p>
+  <p><strong>Issue:</strong> When filtered epics is empty, the table renders an empty <code>Tbody</code> — no message or CTA.</p>
+  <p><strong>Recommendation:</strong> Add PF <code>EmptyState</code> with "No matching epics" and a "Clear search" or "Create epic" action.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Comment rendering uses dangerouslySetInnerHTML without sanitizer</span>
+  </div>
+  <p class="loc">App.tsx — comment render (~lines 1179–1184)</p>
+  <p><strong>Issue:</strong> Comments (from Jira ADF and locally composed) are rendered via <code>dangerouslySetInnerHTML</code>. No DOMPurify or similar sanitizer.</p>
+  <p><strong>Recommendation:</strong> Add DOMPurify (or equivalent) to sanitize HTML before rendering.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">DOM side effects during render for Latest Comment</span>
+  </div>
+  <p class="loc">App.tsx — IssueRow (~lines 1316–1327)</p>
+  <p><strong>Issue:</strong> <code>document.createElement</code> + <code>innerHTML</code> + <code>textContent</code> used during render to strip HTML from comments.</p>
+  <p><strong>Recommendation:</strong> Use a pure string utility function; avoid DOM manipulation in the render path.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">SortButton is native button instead of PF Button</span>
+  </div>
+  <p class="loc">App.tsx — SortButton (~lines 207–233)</p>
+  <p><strong>Recommendation:</strong> Use <code>Button variant="plain"</code> with <code>aria-label</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">ColumnFilter uses pixel-level inline styles on PF components</span>
+  </div>
+  <p class="loc">App.tsx — ColumnFilter (~lines 163–177)</p>
+  <p><strong>Recommendation:</strong> Use PF spacing tokens and compact component variants instead of inline pixel values.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">~85 inline style={{}} usages across App.tsx</span>
+  </div>
+  <p class="loc">App.tsx — throughout (table cells, flex wrappers, drawer layout, toolbars)</p>
+  <p><strong>Issue:</strong> Heavy inline styling for widths, gaps, padding, colors — many could use PF <code>Flex</code> props, spacing tokens, or CSS classes.</p>
+  <p><strong>Recommendation:</strong> Migrate to PF layout props (<code>Flex gap</code>, <code>spaceItems</code>) and CSS classes with token variables.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">PanelSelect typeahead uses raw input instead of PF component</span>
+  </div>
+  <p class="loc">App.tsx — PanelSelect (~lines 609–626)</p>
+  <p><strong>Recommendation:</strong> Use PF typeahead <code>Select</code> pattern or <code>SearchInput</code> composition.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Native date input instead of PF DatePicker</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel (~lines 1037–1056)</p>
+  <p><strong>Recommendation:</strong> Use <code>DatePicker</code> from <code>@patternfly/react-core</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Description editor is custom contentEditable — not a PF pattern</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel (~lines 950–1003)</p>
+  <p><strong>Issue:</strong> Custom toolbar + <code>contentEditable</code> div for rich text editing. Entirely custom a11y and interaction.</p>
+  <p><strong>Recommendation:</strong> Wrap toolbar in PF <code>Toolbar</code>/<code>ButtonGroup</code>; consider PF-skinned rich text editor for long term.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-medium">Medium</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">No responsive strategy — tables overflow on narrow viewports</span>
+  </div>
+  <p class="loc">App.tsx — SprintTable, Epics table; SearchInput</p>
+  <p><strong>Issue:</strong> No <code>gridBreakPoint</code>, no <code>ToolbarToggleGroup</code>, no mobile view. Fixed min-widths on search.</p>
+  <p><strong>Recommendation:</strong> Add PF responsive patterns; consider card view for mobile breakpoints.</p>
+</div>
+
+<!-- ============================================================= -->
+<h1>Low Findings</h1>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Drag handle has no explicit aria-label</span>
+  </div>
+  <p class="loc">App.tsx — IssueRow (~lines 1247–1253)</p>
+  <p><strong>Recommendation:</strong> Add <code>aria-label="Reorder {issue.key}"</code>.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">ColumnFilter span with onClick stopPropagation</span>
+  </div>
+  <p class="loc">App.tsx — ColumnFilter (~lines 179–181)</p>
+  <p><strong>Recommendation:</strong> Move propagation stop to the Select/MenuToggle component.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">App.css uses hardcoded colors instead of PF tokens</span>
+  </div>
+  <p class="loc">App.css — pre, code, hr rules (~lines 50–68)</p>
+  <p><strong>Recommendation:</strong> Replace <code>#f4f4f4</code>/<code>#ddd</code> with PF CSS variables.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Accessibility</span>
+    <span class="finding-title">Disabled Save focus pattern unclear to screen readers</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel footer (~lines 1203–1216)</p>
+  <p><strong>Recommendation:</strong> Consider inline helper text as an alternative to tooltip-only explanation.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Auto-refresh doesn't respect document.visibilityState</span>
+  </div>
+  <p class="loc">App.tsx — useEffect interval (~lines 1756–1761)</p>
+  <p><strong>Recommendation:</strong> Pause polling when the browser tab is hidden to save resources.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Interaction</span>
+    <span class="finding-title">Toast setTimeout not cleared on unmount</span>
+  </div>
+  <p class="loc">App.tsx — addToast (~line 1892)</p>
+  <p><strong>Recommendation:</strong> Store timeout ID and clear in cleanup to avoid state-update-after-unmount warnings.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Drag + auto-refresh race condition</span>
+  </div>
+  <p class="loc">App.tsx — handleDragEnd + useEffect interval</p>
+  <p><strong>Recommendation:</strong> Add a global "mutation in flight" flag to skip auto-refresh during drag operations.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Date handling edge cases</span>
+  </div>
+  <p class="loc">jiraService.ts — formatDueDate (~lines 151–155)</p>
+  <p><strong>Issue:</strong> Appending <code>T00:00:00</code> to date strings; unusual Jira formats could yield Invalid Date.</p>
+  <p><strong>Recommendation:</strong> Use ISO dates end-to-end; format only for display.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">Corner Case</span>
+    <span class="finding-title">Per-section empty messaging inconsistent under search</span>
+  </div>
+  <p class="loc">App.tsx — search empty state (~lines 2347–2360)</p>
+  <p><strong>Recommendation:</strong> Show per-section "no matches" messages instead of only a global card.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Due date icons use inline styles and title instead of PF Tooltip</span>
+  </div>
+  <p class="loc">App.tsx — dueDateIcon (~lines 77–89)</p>
+  <p><strong>Recommendation:</strong> Wrap in PF <code>Tooltip</code>; use PF icon sizing tokens.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Drawer footer uses raw div instead of PF ActionGroup</span>
+  </div>
+  <p class="loc">App.tsx — IssueDetailPanel/EpicCreatePanel footers (~lines 1193–1222)</p>
+  <p><strong>Recommendation:</strong> Use PF <code>ActionGroup</code> with token-based spacing.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Masthead brand is empty — logo lives in PageSection toolbar</span>
+  </div>
+  <p class="loc">App.tsx — Masthead (~lines 1800–1805) vs header toolbar (~2114–2127)</p>
+  <p><strong>Recommendation:</strong> Move logo/title into <code>MastheadBrand</code> per PF Page/Masthead pattern.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Avatars use raw img instead of PF Avatar</span>
+  </div>
+  <p class="loc">App.tsx — IssueRow (~lines 1263–1267)</p>
+  <p><strong>Recommendation:</strong> Use PF <code>Avatar</code> with <code>src</code>, <code>alt</code>, and size props.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">window.prompt/alert used instead of PF Modal/Alert</span>
+  </div>
+  <p class="loc">App.tsx — insertUrl, file upload errors (~lines 734, 761–764, 790)</p>
+  <p><strong>Recommendation:</strong> Use PF <code>Modal</code> with <code>TextInput</code> for URL entry; PF <code>Alert</code>/toast for errors.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-low">Low</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">Hidden file inputs instead of PF FileUpload</span>
+  </div>
+  <p class="loc">App.tsx — multiple locations (~lines 982, 1103–1107, 1608–1614)</p>
+  <p><strong>Recommendation:</strong> Consider PF <code>FileUpload</code> for drag-and-drop upload UI.</p>
+</div>
+
+<!-- ============================================================= -->
+<h1>Opportunities</h1>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-opportunity">Opportunity</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Remove redundant "Modify" from kebab menu</span>
+  </div>
+  <p>Clicking the issue key already opens the edit panel. "Modify" in the kebab duplicates this. Consider keeping kebab for "Clone" (and future actions like Delete) and adding visual affordance that the key is the primary edit entry point.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-opportunity">Opportunity</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Combined sort + filter column menu</span>
+  </div>
+  <p>Filter and sort are separate icons per column header. A single column dropdown menu (like Jira or spreadsheets) combining both would reduce scanning and clicks for power users.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-opportunity">Opportunity</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Keyboard shortcuts for frequent actions</span>
+  </div>
+  <p>No shortcuts for refresh (<code>R</code>), search focus (<code>/</code>), close panel (<code>Escape</code>), or next/previous issue. Adding these would significantly speed up power users.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-opportunity">Opportunity</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Multi-select and bulk operations</span>
+  </div>
+  <p>No ability to select multiple stories for bulk sprint move, status change, or assignment. Row checkboxes + a bulk toolbar would reduce repetitive work for admins managing many issues.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-opportunity">Opportunity</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Epic create panel could use stepped wizard pattern</span>
+  </div>
+  <p>The epic creation form is a single long scroll. Collapsible sections (mirroring the story panel) or a PF <code>Wizard</code> would reduce initial overload for first-time users.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-opportunity">Opportunity</span>
+    <span class="cat">Workflow</span>
+    <span class="finding-title">Derive team members from API instead of hardcoded list</span>
+  </div>
+  <p>The <code>allMembers</code> array is hardcoded. Fetching from loaded issues/epics (or Jira API) would keep the assignee/reporter lists current as the team changes.</p>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="sev sev-opportunity">Opportunity</span>
+    <span class="cat">PatternFly</span>
+    <span class="finding-title">PF PageSection variant props could replace inline background styles</span>
+  </div>
+  <p class="loc">App.tsx — PageSection (~line 2180)</p>
+  <p>Using <code>PageSection variant</code> / <code>isFilled</code> instead of <code>style={{ backgroundColor: "var(...)" }}</code> would be more idiomatic.</p>
+</div>
+
+<!-- ============================================================= -->
+<hr style="margin-top: 40px;" />
+<div style="text-align: center; padding: 30px 0; color: var(--grey); font-size: 0.9em;">
+  <p><strong>UX Audit Report — Consolepuffs Jira Board</strong></p>
+  <p>Generated March 31, 2026 using the <code>ux-audit</code> Cursor Skill</p>
+  <p>55 total findings: 1 Critical, 12 High, 24 Medium, 11 Low, 7 Opportunities</p>
+</div>
+
+</body>
+</html>
