@@ -11,7 +11,7 @@ const PROXY_BASE = import.meta.env.VITE_PROXY_URL || "/jira-api";
 // Jira custom field IDs for the CPUX project
 const FIELD_SPRINT = "customfield_10020";
 const FIELD_ACTIVITY_TYPE = "customfield_10464";
-const FIELD_STORY_POINTS = "customfield_10016";
+const FIELD_STORY_POINTS = "customfield_10028";
 
 const FIELDS = [
   "summary",
@@ -24,10 +24,13 @@ const FIELDS = [
   "description",
   "duedate",
   "comment",
+  "attachment",
   FIELD_SPRINT,
   FIELD_ACTIVITY_TYPE,
   FIELD_STORY_POINTS,
 ];
+
+const attachmentCache = new Map<string, { filename: string; contentUrl: string }>();
 
 // ── Static fallback data ──
 
@@ -184,8 +187,16 @@ function adfToHtml(node: unknown): string {
           case "strike": text = `<s>${text}</s>`; break;
           case "code": text = `<code>${text}</code>`; break;
           case "link": {
-            const href = mark.attrs?.href ?? "#";
-            text = `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+            const href = (mark.attrs?.href as string) ?? "#";
+            const isAttachmentUrl = href.includes("/rest/api/3/attachment/content/");
+            const cleanName = text.replace(/^📎\s*/, "").trim();
+            const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(cleanName);
+            if (isAttachmentUrl && isImage) {
+              const proxyUrl = href.replace("https://api.atlassian.com", "/jira-img");
+              text = `<a href="${proxyUrl}" target="_blank" rel="noopener noreferrer" title="Click to view full size"><img src="${proxyUrl}" alt="${cleanName}" style="max-width:100%;border-radius:4px;margin:4px 0;cursor:pointer" /></a>`;
+            } else {
+              text = `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+            }
             break;
           }
         }
@@ -238,8 +249,19 @@ function adfToHtml(node: unknown): string {
     case "status": return `<span style="background:#eee;padding:2px 6px;border-radius:3px;font-size:0.85em">${(n.attrs?.text as string) ?? ""}</span>`;
     case "mediaGroup":
     case "mediaSingle":
-    case "media":
+      return children;
+    case "media": {
+      const mediaId = (n.attrs?.id as string) ?? "";
+      const cached = attachmentCache.get(mediaId);
+      if (cached && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(cached.filename)) {
+        const proxyUrl = cached.contentUrl.replace("https://api.atlassian.com", "/jira-img");
+        return `<a href="${proxyUrl}" target="_blank" rel="noopener noreferrer" title="Click to view full size"><img src="${proxyUrl}" alt="${cached.filename}" style="max-width:100%;border-radius:4px;margin:4px 0;cursor:pointer" /></a>`;
+      }
+      if (cached) {
+        return `<a href="${cached.contentUrl}" target="_blank" rel="noopener noreferrer">📎 ${cached.filename}</a>`;
+      }
       return "";
+    }
     default:
       return children || "";
   }
@@ -274,69 +296,104 @@ function parseInlineHtml(text: string): Record<string, unknown>[] {
 }
 
 function htmlToAdf(html: string): Record<string, unknown> {
-  const content: Record<string, unknown>[] = [];
-  const lines = html.split("\n");
-  let inList = false;
-  const listItems: Record<string, unknown>[] = [];
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<body>${html}</body>`, "text/html");
 
-  const flushList = () => {
-    if (listItems.length) {
-      content.push({ type: "bulletList", content: [...listItems] });
-      listItems.length = 0;
-    }
-    inList = false;
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    const headingMatch = trimmed.match(/^<h(\d)>(.*?)<\/h\d>$/);
-    if (headingMatch) {
-      flushList();
-      content.push({
-        type: "heading",
-        attrs: { level: parseInt(headingMatch[1], 10) },
-        content: parseInlineHtml(headingMatch[2]),
-      });
-      continue;
-    }
-
-    const liMatch = trimmed.match(/^<li>(.*?)<\/li>$/);
-    if (liMatch) {
-      inList = true;
-      listItems.push({
-        type: "listItem",
-        content: [{ type: "paragraph", content: parseInlineHtml(liMatch[1]) }],
-      });
-      continue;
-    }
-
-    if (trimmed === "<ul>" || trimmed === "</ul>") {
-      if (trimmed === "</ul>") flushList();
-      else inList = true;
-      continue;
-    }
-
-    const pMatch = trimmed.match(/^<p>(.*?)<\/p>$/);
-    if (pMatch) {
-      flushList();
-      content.push({
-        type: "paragraph",
-        content: parseInlineHtml(pMatch[1]),
-      });
-      continue;
-    }
-
-    flushList();
-    content.push({
-      type: "paragraph",
-      content: parseInlineHtml(trimmed),
+  function inlineNodes(el: Node): Record<string, unknown>[] {
+    const result: Record<string, unknown>[] = [];
+    el.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const t = child.textContent ?? "";
+        if (t) result.push({ type: "text", text: t });
+        return;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = (child as HTMLElement).tagName.toLowerCase();
+      const inner = inlineNodes(child);
+      const markType = ({ b: "strong", strong: "strong", i: "em", em: "em", u: "underline", s: "strike", code: "code" } as Record<string, string>)[tag];
+      if (markType) {
+        for (const node of inner) {
+          const marks = ((node.marks as Record<string, unknown>[]) ?? []).concat({ type: markType });
+          result.push({ ...node, marks });
+        }
+        return;
+      }
+      if (tag === "a") {
+        const href = (child as HTMLElement).getAttribute("href") ?? "";
+        for (const node of inner) {
+          const marks = ((node.marks as Record<string, unknown>[]) ?? []).concat({ type: "link", attrs: { href } });
+          result.push({ ...node, marks });
+        }
+        return;
+      }
+      if (tag === "br") {
+        result.push({ type: "hardBreak" });
+        return;
+      }
+      if (tag === "img") {
+        const alt = (child as HTMLElement).getAttribute("alt") ?? "image";
+        const src = (child as HTMLElement).getAttribute("src") ?? "";
+        result.push({ type: "text", text: `📎 ${alt}`, marks: [{ type: "link", attrs: { href: src.replace("/jira-img/", "https://api.atlassian.com/") } }] });
+        return;
+      }
+      result.push(...inner);
     });
+    return result;
   }
-  flushList();
 
-  return { type: "doc", version: 1, content };
+  function blockNodes(container: Node): Record<string, unknown>[] {
+    const content: Record<string, unknown>[] = [];
+    container.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const t = (child.textContent ?? "").trim();
+        if (t) content.push({ type: "paragraph", content: [{ type: "text", text: t }] });
+        return;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      const el = child as HTMLElement;
+      const tag = el.tagName.toLowerCase();
+
+      if (/^h[1-6]$/.test(tag)) {
+        const level = Number(tag[1]);
+        const inline = inlineNodes(el);
+        if (inline.length) content.push({ type: "heading", attrs: { level }, content: inline });
+        return;
+      }
+      if (tag === "p" || tag === "div") {
+        const inline = inlineNodes(el);
+        content.push({ type: "paragraph", content: inline.length ? inline : [{ type: "text", text: " " }] });
+        return;
+      }
+      if (tag === "ul" || tag === "ol") {
+        const listType = tag === "ul" ? "bulletList" : "orderedList";
+        const items: Record<string, unknown>[] = [];
+        el.querySelectorAll(":scope > li").forEach((li) => {
+          const nested = blockNodes(li);
+          const liContent = nested.length ? nested : [{ type: "paragraph", content: inlineNodes(li) }];
+          items.push({ type: "listItem", content: liContent });
+        });
+        if (items.length) content.push({ type: listType, content: items });
+        return;
+      }
+      if (tag === "hr") { content.push({ type: "rule" }); return; }
+      if (tag === "blockquote") {
+        const inner = blockNodes(el);
+        if (inner.length) content.push({ type: "blockquote", content: inner });
+        return;
+      }
+      if (tag === "pre") {
+        content.push({ type: "codeBlock", content: [{ type: "text", text: el.textContent ?? "" }] });
+        return;
+      }
+      const inline = inlineNodes(el);
+      if (inline.length) content.push({ type: "paragraph", content: inline });
+    });
+    return content;
+  }
+
+  const body = doc.body;
+  const content = blockNodes(body);
+  return { type: "doc", version: 1, content: content.length ? content : [{ type: "paragraph", content: [{ type: "text", text: " " }] }] };
 }
 
 function textWithLinks(text: string): Record<string, unknown>[] {
@@ -365,15 +422,87 @@ function descriptionToAdf(desc: string): Record<string, unknown> {
   const isHtml = /<(?:h[1-6]|p|ul|li)[\s>]/.test(desc);
   if (isHtml) return htmlToAdf(desc);
 
-  const paragraphs = desc.split(/\n+/).filter((l) => l.trim());
-  return {
-    type: "doc",
-    version: 1,
-    content: paragraphs.map((p) => ({
-      type: "paragraph",
-      content: textWithLinks(p),
-    })),
+  const lines = desc.split("\n");
+  const content: Record<string, unknown>[] = [];
+  let bulletBuf: string[] = [];
+  let orderedBuf: string[] = [];
+
+  const flushBullets = () => {
+    if (bulletBuf.length) {
+      content.push({
+        type: "bulletList",
+        content: bulletBuf.map((b) => ({
+          type: "listItem",
+          content: [{ type: "paragraph", content: textWithLinks(b) }],
+        })),
+      });
+      bulletBuf = [];
+    }
   };
+
+  const flushOrdered = () => {
+    if (orderedBuf.length) {
+      content.push({
+        type: "orderedList",
+        content: orderedBuf.map((b) => ({
+          type: "listItem",
+          content: [{ type: "paragraph", content: textWithLinks(b) }],
+        })),
+      });
+      orderedBuf = [];
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)/);
+    if (headingMatch) {
+      flushBullets();
+      flushOrdered();
+      content.push({
+        type: "heading",
+        attrs: { level: headingMatch[1].length },
+        content: textWithLinks(headingMatch[2]),
+      });
+      continue;
+    }
+
+    if (trimmed === "---") {
+      flushBullets();
+      flushOrdered();
+      content.push({ type: "rule" });
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      flushOrdered();
+      bulletBuf.push(trimmed.replace(/^[-*]\s+/, ""));
+      continue;
+    }
+
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)/);
+    if (olMatch) {
+      flushBullets();
+      orderedBuf.push(olMatch[1]);
+      continue;
+    }
+
+    flushBullets();
+    flushOrdered();
+
+    if (!trimmed) continue;
+
+    content.push({
+      type: "paragraph",
+      content: textWithLinks(trimmed),
+    });
+  }
+
+  flushBullets();
+  flushOrdered();
+
+  return { type: "doc", version: 1, content };
 }
 
 function parseComments(raw: RawComment[]): JiraComment[] {
@@ -387,6 +516,12 @@ function parseComments(raw: RawComment[]): JiraComment[] {
 
 function parseIssue(raw: RawIssue): JiraIssue {
   const f = raw.fields;
+
+  const attachments = (f.attachment as { id: string; filename: string; content: string }[] | undefined) ?? [];
+  for (const att of attachments) {
+    attachmentCache.set(att.id, { filename: att.filename, contentUrl: att.content });
+  }
+
   const sprints = (f[FIELD_SPRINT] as RawSprint[] | null) ?? [];
   for (const s of sprints) {
     if (s.id && s.name) sprintIdCache.set(s.name, s.id);
@@ -398,6 +533,11 @@ function parseIssue(raw: RawIssue): JiraIssue {
   const activityField = f[FIELD_ACTIVITY_TYPE] as { value: string } | null;
   const parentIsEpic =
     f.parent?.fields?.issuetype?.name === "Epic";
+  const rawSP = f[FIELD_STORY_POINTS];
+  const storyPoints = (rawSP as number) ?? null;
+  if (storyPoints == null && rawSP !== undefined && rawSP !== null) {
+    console.warn(`[parseIssue] ${raw.key} — unexpected story points value:`, rawSP);
+  }
 
   return {
     key: raw.key,
@@ -409,7 +549,7 @@ function parseIssue(raw: RawIssue): JiraIssue {
     activityType: activityField?.value ?? "",
     epicName: parentIsEpic ? (f.parent?.fields?.summary ?? "") : "",
     epicKey: parentIsEpic ? (f.parent?.key ?? "") : "",
-    storyPoints: (f[FIELD_STORY_POINTS] as number) ?? null,
+    storyPoints,
     sprintName: sprint?.name ?? "",
     sprintState: (sprint?.state as JiraIssue["sprintState"]) ?? "",
     sprintStartDate: formatSprintDate(sprint?.startDate),
@@ -572,6 +712,20 @@ export async function resolveAccountId(displayName: string): Promise<string | nu
   }
 }
 
+export async function fetchSingleIssue(issueKey: string): Promise<JiraIssue | null> {
+  try {
+    const res = await jiraFetch(
+      `${apiBase()}/rest/api/3/issue/${issueKey}?fields=parent,${FIELDS.join(",")}`,
+      { headers: authHeaders() }
+    );
+    if (!res.ok) return null;
+    const raw = await res.json();
+    return parseIssue(raw);
+  } catch {
+    return null;
+  }
+}
+
 // ── Sprint ID resolution ──
 
 export function getSprintIdCache(): Map<string, number> {
@@ -701,7 +855,7 @@ export async function createIssue(issue: JiraIssue): Promise<JiraIssue> {
   // Priority is not settable on creation for this project; Jira assigns the default
   const dueDateIso = toDueDate(issue.dueDate);
   if (dueDateIso) fields.duedate = dueDateIso;
-  if (issue.storyPoints != null) fields[FIELD_STORY_POINTS] = issue.storyPoints;
+  if (issue.storyPoints != null) fields[FIELD_STORY_POINTS] = parseFloat(String(issue.storyPoints));
   if (issue.activityType) fields[FIELD_ACTIVITY_TYPE] = { value: issue.activityType };
   if (issue.epicKey) fields.parent = { key: issue.epicKey };
 
@@ -778,8 +932,9 @@ export async function updateIssue(
   const oldDue = toDueDate(original.dueDate);
   if (newDue !== oldDue) fields.duedate = newDue ?? null;
 
+  console.log(`[updateIssue] ${updated.key} storyPoints: updated=${updated.storyPoints} (${typeof updated.storyPoints}), original=${original.storyPoints} (${typeof original.storyPoints}), changed=${updated.storyPoints !== original.storyPoints}`);
   if (updated.storyPoints !== original.storyPoints) {
-    fields[FIELD_STORY_POINTS] = updated.storyPoints;
+    fields[FIELD_STORY_POINTS] = updated.storyPoints != null ? parseFloat(String(updated.storyPoints)) : null;
   }
 
   if (updated.activityType !== original.activityType) {

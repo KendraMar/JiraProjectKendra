@@ -50,6 +50,7 @@ import {
   AlertActionCloseButton,
   Tooltip,
   SearchInput,
+  Form,
 } from "@patternfly/react-core";
 import { FilterIcon } from "@patternfly/react-icons";
 import {
@@ -60,11 +61,11 @@ import {
   Th,
   Td,
 } from "@patternfly/react-table";
-import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon, PaperclipIcon, LinkIcon, PlusCircleIcon } from "@patternfly/react-icons";
+import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon, PaperclipIcon, LinkIcon, PlusCircleIcon, TimesIcon } from "@patternfly/react-icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
-import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, attachFile } from "./services/jiraService";
+import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, attachFile, fetchSingleIssue } from "./services/jiraService";
 
 const JIRA_CPUX_BOARD_URL =
   "https://redhat.atlassian.net/jira/software/c/projects/CPUX/boards/6195";
@@ -120,6 +121,25 @@ function activityColor(activity: string): LabelColor {
     default:
       return "grey";
   }
+}
+
+// ── Persisted state hook (survives HMR and data refreshes) ──
+
+function usePersistedState<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [state, setState] = useState<T>(() => {
+    try {
+      const stored = sessionStorage.getItem(key);
+      return stored ? (JSON.parse(stored) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem(key, JSON.stringify(state));
+  }, [key, state]);
+
+  return [state, setState];
 }
 
 // ── Inline column filter dropdown ──
@@ -220,11 +240,12 @@ const STATUS_COL = 4;
 const EPIC_COL = 5;
 
 function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, onClone }: { group: SprintGroup; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; droppableId: string; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void }) {
-  const [activeSortIndex, setActiveSortIndex] = useState<number | undefined>(undefined);
-  const [activeSortDirection, setActiveSortDirection] = useState<"asc" | "desc">("asc");
-  const [ownerFilter, setOwnerFilter] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [epicFilter, setEpicFilter] = useState<string[]>([]);
+  const filterKey = droppableId.replace(/[^a-zA-Z0-9]/g, "_");
+  const [activeSortIndex, setActiveSortIndex] = usePersistedState<number | undefined>(`sort_idx:${filterKey}`, undefined);
+  const [activeSortDirection, setActiveSortDirection] = usePersistedState<"asc" | "desc">(`sort_dir:${filterKey}`, "asc");
+  const [ownerFilter, setOwnerFilter] = usePersistedState<string[]>(`filter_owner:${filterKey}`, []);
+  const [statusFilter, setStatusFilter] = usePersistedState<string[]>(`filter_status:${filterKey}`, []);
+  const [epicFilter, setEpicFilter] = usePersistedState<string[]>(`filter_epic:${filterKey}`, []);
 
   const ownerOptions = useMemo(
     () => [...new Set(group.issues.map((i) => i.assigneeName))].sort(),
@@ -261,8 +282,8 @@ function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, o
         let valA = "";
         let valB = "";
         if (activeSortIndex === OWNER_COL) {
-          valA = a.assigneeName.toLowerCase();
-          valB = b.assigneeName.toLowerCase();
+          valA = (a.assigneeName.split(" ")[0] ?? "").toLowerCase();
+          valB = (b.assigneeName.split(" ")[0] ?? "").toLowerCase();
         } else if (activeSortIndex === STATUS_COL) {
           valA = a.status.toLowerCase();
           valB = b.status.toLowerCase();
@@ -397,9 +418,20 @@ function DroppableTab({ droppableId, label, subtitle, isActive, onClick, style }
   );
 }
 
-function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog") => void }) {
+function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => void }) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState(0);
+  const defaultTab = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    for (let i = 0; i < HCC_SPRINTS.length; i++) {
+      const start = new Date(`${HCC_SPRINTS[i].startDate} ${year}`);
+      const end = new Date(`${HCC_SPRINTS[i].endDate} ${year}`);
+      end.setHours(23, 59, 59, 999);
+      if (today >= start && today <= end) return i;
+    }
+    return 0;
+  }, []);
+  const [activeTab, setActiveTab] = usePersistedState("sprint_active_tab", defaultTab);
 
   const tabs: SprintGroup[] = HCC_SPRINTS.map(({ name, startDate, endDate }) => {
     const found = sprintGroups.find((g) => g.name === name);
@@ -449,7 +481,7 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
       {activeTabData && (
         <>
           <div style={{ padding: "12px 0" }}>
-            <Button variant="primary" size="sm" onClick={() => onCreate(activeTabData.name, activeTabData.state as "active" | "future")}>+ Create story in this sprint</Button>
+            <Button variant="primary" size="sm" onClick={() => onCreate(activeTabData.name, activeTabData.state as "active" | "future", activeTabData.startDate, activeTabData.endDate)}>+ Create story in this sprint</Button>
           </div>
           <SprintTable group={activeTabData} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${activeTabData.state}:${activeTabData.name}`} onModify={onModify} onClone={onClone} />
         </>
@@ -656,19 +688,65 @@ function IssueDetailPanel({
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [commentsExpanded, setCommentsExpanded] = useState(true);
   const [newComment, setNewComment] = useState("");
-  const [editingDesc, setEditingDesc] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
+  const [commentDragOver, setCommentDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [plainDesc, setPlainDesc] = useState("");
+  const descFileInputRef = useRef<HTMLInputElement>(null);
   const [descDirty, setDescDirty] = useState(false);
+  const descEditorRef = useRef<HTMLDivElement>(null);
 
   const patch = (partial: Partial<JiraIssue>) => setDraft((prev) => ({ ...prev, ...partial }));
+
+  const syncDescFromEditor = () => {
+    if (descEditorRef.current) {
+      patch({ description: descEditorRef.current.innerHTML });
+      setDescDirty(true);
+    }
+  };
+
+  const execDesc = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    descEditorRef.current?.focus();
+  };
+
+  const handleDescFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length || !issue.key || isClone) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const result = await attachFile(issue.key, file);
+        const isImage = file.type.startsWith("image/");
+        const proxyUrl = result.url.replace("https://api.atlassian.com", "/jira-img");
+        if (descEditorRef.current) {
+          descEditorRef.current.focus();
+          if (isImage) {
+            document.execCommand("insertHTML", false,
+              `<a href="${proxyUrl}" target="_blank" rel="noopener noreferrer"><img src="${proxyUrl}" alt="${result.filename}" style="max-width:100%;border-radius:4px;margin:4px 0;cursor:pointer" /></a>`);
+          } else {
+            document.execCommand("insertHTML", false,
+              `<a href="${result.url}" target="_blank" rel="noopener noreferrer">📎 ${result.filename}</a>`);
+          }
+          syncDescFromEditor();
+        }
+      }
+    } catch (err) {
+      console.error("File upload failed", err);
+      alert(`Upload failed: ${(err as Error).message}`);
+    } finally {
+      setUploading(false);
+      if (descFileInputRef.current) descFileInputRef.current.value = "";
+    }
+  };
 
   const handleSave = () => {
     if (!descDirty) {
       onUpdate({ ...draft, description: issue.description });
     } else {
-      onUpdate(draft);
+      const liveHtml = descEditorRef.current?.innerHTML ?? draft.description;
+      onUpdate({ ...draft, description: liveHtml });
     }
   };
   const handleCancel = () => onClose();
@@ -693,35 +771,41 @@ function IssueDetailPanel({
     });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCommentFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files?.length || !issue.key || isClone) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const result = await attachFile(issue.key, file);
-        setNewComment((prev) => {
-          const separator = prev && !prev.endsWith("\n") ? "\n" : "";
-          return prev + separator + `[📎 ${result.filename}](${result.url})`;
-        });
-      }
-    } catch (err) {
-      console.error("File upload failed", err);
-      alert(`Upload failed: ${(err as Error).message}`);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!files?.length) return;
+    setCommentFiles((prev) => [...prev, ...Array.from(files)]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleCommentDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCommentDragOver(false);
+    if (isClone) return;
+    const files = e.dataTransfer.files;
+    if (files?.length) {
+      setCommentFiles((prev) => [...prev, ...Array.from(files)]);
     }
   };
 
-  const addComment = () => {
+  const removeCommentFile = (index: number) => {
+    setCommentFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addComment = async () => {
     const text = newComment.trim();
-    if (!text) return;
+    const hasFiles = commentFiles.length > 0;
+    if (!text && !hasFiles) return;
+    setUploadError("");
 
+    const imgify = (s: string) =>
+      s.replace(/!\[([^\]]*)\]\((\/jira-img\/[^\s)]+|https?:\/\/[^\s)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer" title="Click to view full size"><img src="$2" alt="$1" style="max-width:100%;border-radius:4px;margin:4px 0;cursor:pointer" /></a>');
     const linkify = (s: string) =>
-      s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      imgify(s).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
-    const lines = text.split("\n");
+    const lines = text ? text.split("\n") : [];
     const htmlParts: string[] = [];
     let bulletBuffer: string[] = [];
     const flushBullets = () => {
@@ -741,6 +825,32 @@ function IssueDetailPanel({
     }
     flushBullets();
 
+    if (hasFiles && issue.key && !isClone) {
+      setUploading(true);
+      try {
+        for (const file of commentFiles) {
+          const result = await attachFile(issue.key, file);
+          const isImage = file.type.startsWith("image/");
+          const proxyUrl = result.url.replace("https://api.atlassian.com", "/jira-img");
+          if (isImage) {
+            htmlParts.push(`<a href="${proxyUrl}" target="_blank" rel="noopener noreferrer" title="Click to view full size"><img src="${proxyUrl}" alt="${result.filename}" style="max-width:100%;border-radius:4px;margin:4px 0;cursor:pointer" /></a>`);
+          } else {
+            htmlParts.push(`<p><a href="${result.url}" target="_blank" rel="noopener noreferrer">📎 ${result.filename}</a></p>`);
+          }
+        }
+      } catch (err) {
+        console.error("File upload failed", err);
+        setUploadError(`Upload failed: ${(err as Error).message}`);
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    } else if (hasFiles) {
+      for (const file of commentFiles) {
+        htmlParts.push(`<p>📎 ${file.name}</p>`);
+      }
+    }
+
     const comment: JiraComment = {
       author: "You",
       authorAvatar: "",
@@ -749,6 +859,7 @@ function IssueDetailPanel({
     };
     setDraft((prev) => ({ ...prev, comments: [comment, ...prev.comments] }));
     setNewComment("");
+    setCommentFiles([]);
   };
 
   const missingFields: string[] = [];
@@ -797,7 +908,11 @@ function IssueDetailPanel({
           <div style={{ flex: 1 }}>
             {isClone ? (
               <>
-                <Label color="blue" style={{ marginBottom: 8 }}>New story in this sprint</Label>
+                <Label color="blue" style={{ marginBottom: 8 }}>
+                  {draft.sprintName
+                    ? `New story in ${draft.sprintName}${draft.sprintStartDate || draft.sprintEndDate ? `, ${draft.sprintStartDate ?? ""}–${draft.sprintEndDate ?? ""}` : ""}`
+                    : "New story in Backlog"}
+                </Label>
                 <TextArea
                   value={draft.summary}
                   onChange={(_e, val) => patch({ summary: val })}
@@ -864,41 +979,61 @@ function IssueDetailPanel({
             isExpanded={descExpanded}
             onToggle={(_e, expanded) => setDescExpanded(expanded)}
           >
-            {editingDesc ? (
-              <TextArea
-                value={plainDesc}
-                onChange={(_e, val) => { setPlainDesc(val); setDescDirty(true); }}
-                onBlur={() => { patch({ description: plainDesc }); setEditingDesc(false); }}
-                aria-label="Description"
-                autoResize
-                rows={6}
-                autoFocus
-                style={{
-                  width: "100%",
-                  ...(isClone ? { color: "var(--pf-t--global--color--status--danger--default)" } : {}),
+            <div style={{ border: "1px solid var(--pf-t--global--border--color--default)", borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ display: "flex", gap: 2, padding: "4px 6px", background: "var(--pf-t--global--background--color--secondary--default)", borderBottom: "1px solid var(--pf-t--global--border--color--default)", flexWrap: "wrap", alignItems: "center" }}>
+                <Tooltip content="Bold (Cmd+B)">
+                  <Button variant="plain" size="sm" onClick={() => execDesc("bold")} aria-label="Bold" style={{ padding: "2px 6px" }}>
+                    <strong>B</strong>
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Italic (Cmd+I)">
+                  <Button variant="plain" size="sm" onClick={() => execDesc("italic")} aria-label="Italic" style={{ padding: "2px 6px" }}>
+                    <em>I</em>
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Heading">
+                  <Button variant="plain" size="sm" onClick={() => execDesc("formatBlock", "<h3>")} aria-label="Heading" style={{ padding: "2px 6px", fontWeight: 700 }}>
+                    H
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Bullet list">
+                  <Button variant="plain" size="sm" onClick={() => execDesc("insertUnorderedList")} aria-label="Bullet list" style={{ padding: "2px 6px" }}>
+                    <ListIcon />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Numbered list">
+                  <Button variant="plain" size="sm" onClick={() => execDesc("insertOrderedList")} aria-label="Numbered list" style={{ padding: "2px 6px" }}>
+                    1.
+                  </Button>
+                </Tooltip>
+                <Tooltip content={isClone ? "Save first to attach files" : "Attach file to description"}>
+                  <Button variant="plain" size="sm" onClick={() => descFileInputRef.current?.click()} aria-label="Attach file" style={{ padding: "2px 6px" }} isDisabled={isClone || uploading} isLoading={uploading}>
+                    <PaperclipIcon />
+                  </Button>
+                </Tooltip>
+                <input type="file" ref={descFileInputRef} style={{ display: "none" }} multiple onChange={handleDescFileUpload} />
+              </div>
+              <div
+                ref={(el) => {
+                  (descEditorRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                  if (el && !el.dataset.init) {
+                    el.innerHTML = draft.description || "";
+                    el.dataset.init = "1";
+                  }
                 }}
-              />
-            ) : (
-              <Content
-                component="div"
                 className="description-view"
-                onClick={() => {
-                  const tmp = document.createElement("div");
-                  tmp.innerHTML = draft.description || "";
-                  setPlainDesc(tmp.textContent || "");
-                  setEditingDesc(true);
-                }}
+                contentEditable
+                suppressContentEditableWarning
+                onInput={() => setDescDirty(true)}
+                onBlur={syncDescFromEditor}
                 style={{
-                  cursor: "text",
-                  minHeight: 60,
+                  minHeight: 80,
                   padding: 8,
-                  border: "1px solid var(--pf-t--global--border--color--default)",
-                  borderRadius: 4,
+                  outline: "none",
                   ...(isClone ? { color: "var(--pf-t--global--color--status--danger--default)" } : {}),
                 }}
-                dangerouslySetInnerHTML={{ __html: draft.description || "<em>Click to edit…</em>" }}
               />
-            )}
+            </div>
           </ExpandableSection>
 
           <Divider style={{ margin: "16px 0" }} />
@@ -996,13 +1131,26 @@ function IssueDetailPanel({
             isExpanded={commentsExpanded}
             onToggle={(_e, expanded) => setCommentsExpanded(expanded)}
           >
-            <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                marginBottom: 12,
+                border: commentDragOver ? "2px dashed var(--pf-t--global--color--brand--default, #0066cc)" : "2px dashed transparent",
+                borderRadius: 6,
+                padding: commentDragOver ? 8 : 0,
+                background: commentDragOver ? "rgba(0,102,204,0.05)" : "transparent",
+                transition: "all 0.15s ease",
+              }}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setCommentDragOver(true); }}
+              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setCommentDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setCommentDragOver(false); }}
+              onDrop={handleCommentDrop}
+            >
               <input
                 type="file"
                 ref={fileInputRef}
                 style={{ display: "none" }}
                 multiple
-                onChange={handleFileUpload}
+                onChange={handleCommentFileSelect}
               />
               <div style={{ marginBottom: 4, display: "flex", gap: 2 }}>
                 <Tooltip content="Insert bullet list">
@@ -1015,7 +1163,7 @@ function IssueDetailPanel({
                     <LinkIcon />
                   </Button>
                 </Tooltip>
-                <Tooltip content={isClone ? "Save the issue first to attach files" : "Attach file"}>
+                <Tooltip content={isClone ? "Save the issue first to attach files" : "Attach file or drag & drop"}>
                   <Button
                     variant="plain"
                     size="sm"
@@ -1047,13 +1195,43 @@ function IssueDetailPanel({
                     }
                   }}
                   aria-label="Add a comment"
-                  placeholder="Add a comment… (use - for bullets, [text](url) for links)"
+                  placeholder={commentDragOver ? "Drop files here…" : "Add a comment… (use - for bullets, drag & drop files here)"}
                   rows={2}
                   autoResize
                   style={{ flex: 1 }}
                 />
-                <Button variant="primary" onClick={addComment} isDisabled={!newComment.trim()} style={{ whiteSpace: "nowrap" }}>Add</Button>
+                <Button
+                  variant="primary"
+                  onClick={addComment}
+                  isDisabled={(!newComment.trim() && commentFiles.length === 0) || uploading}
+                  isLoading={uploading}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  {uploading ? "Uploading…" : "Add"}
+                </Button>
               </div>
+              {commentFiles.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {commentFiles.map((file, idx) => (
+                    <Label
+                      key={`${file.name}-${idx}`}
+                      color="blue"
+                      onClose={() => removeCommentFile(idx)}
+                      icon={<PaperclipIcon />}
+                    >
+                      {file.name}{file.size < 1024 * 1024 ? ` (${Math.round(file.size / 1024)} KB)` : ` (${(file.size / (1024 * 1024)).toFixed(1)} MB)`}
+                    </Label>
+                  ))}
+                </div>
+              )}
+              {uploadError && (
+                <Alert variant="danger" isInline isPlain title={uploadError} style={{ marginTop: 8 }} actionClose={<AlertActionCloseButton onClose={() => setUploadError("")} />} />
+              )}
+              {commentDragOver && (
+                <div style={{ textAlign: "center", padding: "8px 0", color: "var(--pf-t--global--color--brand--default, #0066cc)", fontSize: "0.85em", fontWeight: 600 }}>
+                  Drop files to attach to this comment
+                </div>
+              )}
             </div>
 
             <div style={{ maxHeight: 280, overflowY: "auto", paddingRight: 4 }}>
@@ -1256,7 +1434,337 @@ function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: Jira
   );
 }
 
-// ── Main App ──
+// ── Epic create panel (drawer) ──
+
+const PROBLEM_TYPE_OPTIONS = [
+  { value: "", label: "Select…" },
+  { value: "problem-statement-uxd-data-driven", label: "Yes — UXD Data-driven" },
+  { value: "problem-statement-data-driven", label: "Yes — Data-driven" },
+  { value: "problem-statement-assumption", label: "No — Assumption-based" },
+];
+
+type EpicFormState = {
+  title: string;
+  what: string;
+  status: string;
+  assigneeName: string;
+  reporterName: string;
+  problemType: "" | "problem-statement-uxd-data-driven" | "problem-statement-data-driven" | "problem-statement-assumption";
+  targetUser: string;
+  specificIssue: string;
+  dataSource: string;
+  specificMetrics: string;
+  impact: string;
+  reason: string;
+  assumptionSource: string;
+  definitionOfDone: string;
+  additionalContext: string;
+};
+
+function EpicCreatePanel({
+  epicForm,
+  setEpicForm,
+  onSave,
+  onClose,
+  isSaving,
+  allStatuses,
+  allMembers,
+}: {
+  epicForm: EpicFormState;
+  setEpicForm: React.Dispatch<React.SetStateAction<EpicFormState>>;
+  onSave: () => void;
+  onClose: () => void;
+  isSaving: boolean;
+  allStatuses: string[];
+  allMembers: string[];
+}) {
+  const [problemTypeOpen, setProblemTypeOpen] = useState(false);
+  const contextFileRef = useRef<HTMLInputElement>(null);
+
+  const patch = (partial: Partial<EpicFormState>) =>
+    setEpicForm((prev) => ({ ...prev, ...partial }));
+
+  const insertContextBullet = () => {
+    setEpicForm((prev) => {
+      const val = prev.additionalContext;
+      const lines = val.split("\n");
+      const lastLine = lines[lines.length - 1];
+      if (lastLine.startsWith("- ")) return prev;
+      const prefix = val && !val.endsWith("\n") ? "\n" : "";
+      return { ...prev, additionalContext: val + prefix + "- " };
+    });
+  };
+
+  const insertContextUrl = () => {
+    const url = window.prompt("Enter URL:");
+    if (!url) return;
+    const label = window.prompt("Link text (leave blank to use URL):", "") || url;
+    setEpicForm((prev) => {
+      const val = prev.additionalContext;
+      const separator = val && !val.endsWith("\n") && !val.endsWith(" ") ? " " : "";
+      return { ...prev, additionalContext: val + separator + `[${label}](${url})` };
+    });
+  };
+
+  const handleContextFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const names = Array.from(files).map((f) => f.name);
+    setEpicForm((prev) => {
+      const val = prev.additionalContext;
+      const separator = val && !val.endsWith("\n") ? "\n" : "";
+      const entries = names.map((n) => `- 📎 ${n}`).join("\n");
+      return { ...prev, additionalContext: val + separator + entries };
+    });
+    if (contextFileRef.current) contextFileRef.current.value = "";
+  };
+
+  const statusOptions = allStatuses.map((s) => ({ value: s, label: s }));
+  const memberOptions = allMembers.map((m) => ({ value: m, label: m }));
+
+  const sectionStyle: React.CSSProperties = {
+    backgroundColor: "var(--pf-t--global--background--color--secondary--default)",
+    borderRadius: 8,
+    padding: "12px 16px",
+    marginTop: 4,
+  };
+
+  return (
+    <DrawerPanelContent widths={{ default: "width_50" }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <DrawerHead>
+          <div style={{ flex: 1 }}>
+            <Label color="purple" style={{ marginBottom: 8 }}>New Epic</Label>
+            <TextArea
+              value={epicForm.title}
+              onChange={(_e, val) => patch({ title: val })}
+              placeholder="[UXD EPIC] Your title here"
+              rows={1}
+              resizeOrientation="vertical"
+              aria-label="Epic title"
+              style={{ fontSize: "1.25rem", fontWeight: 600 }}
+            />
+          </div>
+          <DrawerActions>
+            <DrawerCloseButton onClick={onClose} />
+          </DrawerActions>
+        </DrawerHead>
+        <DrawerPanelBody style={{ flex: 1, overflowY: "auto", paddingLeft: 24 }}>
+          <Flex spaceItems={{ default: "spaceItemsMd" }} alignItems={{ default: "alignItemsCenter" }} style={{ marginBottom: 12 }} flexWrap={{ default: "wrap" }}>
+            <FlexItem>
+              <FormGroup label="Status" fieldId="epic-status">
+                <PanelSelect label="Status" value={epicForm.status} options={statusOptions} onSelect={(v) => patch({ status: v })} />
+              </FormGroup>
+            </FlexItem>
+            <FlexItem>
+              <FormGroup label="Assignee" fieldId="epic-assignee">
+                <PanelSelect label="Assignee" value={epicForm.assigneeName} options={memberOptions} onSelect={(v) => patch({ assigneeName: v })} />
+              </FormGroup>
+            </FlexItem>
+            <FlexItem>
+              <FormGroup label="Reporter" fieldId="epic-reporter">
+                <PanelSelect label="Reporter" value={epicForm.reporterName} options={memberOptions} onSelect={(v) => patch({ reporterName: v })} />
+              </FormGroup>
+            </FlexItem>
+          </Flex>
+          <Form>
+            {/* ── What ── */}
+            <Divider style={{ margin: "8px 0" }} />
+            <FormGroup label="What" fieldId="epic-what">
+              <Content component="small" style={{ color: "var(--pf-t--global--text--color--subtle)", marginBottom: 4, display: "block" }}>
+                Describe the primary outcome of this epic. What deliverable will be produced?
+              </Content>
+              <TextArea
+                id="epic-what"
+                value={epicForm.what}
+                onChange={(_e, val) => patch({ what: val })}
+                placeholder="e.g., A redesigned onboarding wizard that reduces setup time for new HCC administrators."
+                rows={3}
+                resizeOrientation="vertical"
+              />
+            </FormGroup>
+
+            <FormGroup label="Data informed?" fieldId="epic-problem-type">
+              <Select
+                role="menu"
+                aria-label="Problem statement format"
+                isOpen={problemTypeOpen}
+                selected={epicForm.problemType}
+                onSelect={(_e, val) => { patch({ problemType: val as EpicFormState["problemType"] }); setProblemTypeOpen(false); }}
+                onOpenChange={setProblemTypeOpen}
+                toggle={(toggleRef) => (
+                  <MenuToggle ref={toggleRef} onClick={() => setProblemTypeOpen((p) => !p)} isExpanded={problemTypeOpen} isFullWidth>
+                    {PROBLEM_TYPE_OPTIONS.find((o) => o.value === epicForm.problemType)?.label || "Select…"}
+                  </MenuToggle>
+                )}
+              >
+                {PROBLEM_TYPE_OPTIONS.filter((o) => o.value).map((o) => (
+                  <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+                ))}
+              </Select>
+            </FormGroup>
+
+            <FormGroup label="Target User (optional)" fieldId="epic-target-user-main">
+              <TextArea id="epic-target-user-main" value={epicForm.targetUser} onChange={(_e, v) => patch({ targetUser: v })} placeholder="e.g., New HCC administrators" rows={1} resizeOrientation="vertical" />
+            </FormGroup>
+            <FormGroup label="Specific Issue (optional)" fieldId="epic-specific-issue-main">
+              <TextArea id="epic-specific-issue-main" value={epicForm.specificIssue} onChange={(_e, v) => patch({ specificIssue: v })} placeholder="e.g., misconfiguring cluster settings during initial setup" rows={1} resizeOrientation="vertical" />
+            </FormGroup>
+            <FormGroup label="Data Source (optional)" fieldId="epic-data-source-main">
+              <TextArea id="epic-data-source-main" value={epicForm.dataSource} onChange={(_e, v) => patch({ dataSource: v })} placeholder="e.g., analytics, user research, support tickets" rows={1} resizeOrientation="vertical" />
+            </FormGroup>
+            <FormGroup label="Impact (optional)" fieldId="epic-impact-main">
+              <TextArea id="epic-impact-main" value={epicForm.impact} onChange={(_e, v) => patch({ impact: v })} placeholder="e.g., increased support tickets and delayed time-to-value" rows={1} resizeOrientation="vertical" />
+            </FormGroup>
+
+            {/* ── Problem Statement ── */}
+
+            {(epicForm.problemType === "problem-statement-uxd-data-driven" || epicForm.problemType === "problem-statement-data-driven") && (
+              <div style={sectionStyle}>
+                <Content component="small" style={{ color: "var(--pf-t--global--text--color--subtle)", marginBottom: 8, display: "block" }}>
+                  Must cite a specific data source and metric. Be concrete (e.g., &ldquo;28% misconfiguration rate&rdquo; not &ldquo;many users struggle&rdquo;).
+                </Content>
+                <FormGroup label="Target User" fieldId="epic-target-user">
+                  <TextArea id="epic-target-user" value={epicForm.targetUser} onChange={(_e, v) => patch({ targetUser: v })} placeholder="e.g., New HCC administrators" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+                <FormGroup label="Specific Issue" fieldId="epic-specific-issue">
+                  <TextArea id="epic-specific-issue" value={epicForm.specificIssue} onChange={(_e, v) => patch({ specificIssue: v })} placeholder="e.g., misconfiguring cluster settings during initial setup" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+                <FormGroup label="Data Source" fieldId="epic-data-source">
+                  <TextArea id="epic-data-source" value={epicForm.dataSource} onChange={(_e, v) => patch({ dataSource: v })} placeholder="e.g., analytics, user research, support tickets" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+                <FormGroup label="Specific Metrics" fieldId="epic-metrics">
+                  <TextArea id="epic-metrics" value={epicForm.specificMetrics} onChange={(_e, v) => patch({ specificMetrics: v })} placeholder="e.g., 28% misconfiguration rate in first 7 days" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+                <FormGroup label="Impact" fieldId="epic-impact">
+                  <TextArea id="epic-impact" value={epicForm.impact} onChange={(_e, v) => patch({ impact: v })} placeholder="e.g., increased support tickets and delayed time-to-value" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+              </div>
+            )}
+
+            {epicForm.problemType === "problem-statement-assumption" && (
+              <div style={sectionStyle}>
+                <Content component="small" style={{ color: "var(--pf-t--global--text--color--subtle)", marginBottom: 8, display: "block" }}>
+                  Must state what the assumption is based on. Name the source even if informal (e.g., &ldquo;PM feedback in Q4 retro&rdquo;).
+                </Content>
+                <FormGroup label="Target User" fieldId="epic-target-user-a">
+                  <TextArea id="epic-target-user-a" value={epicForm.targetUser} onChange={(_e, v) => patch({ targetUser: v })} placeholder="e.g., Developers using the API console" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+                <FormGroup label="Specific Issue" fieldId="epic-specific-issue-a">
+                  <TextArea id="epic-specific-issue-a" value={epicForm.specificIssue} onChange={(_e, v) => patch({ specificIssue: v })} placeholder="e.g., difficulty discovering available endpoints" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+                <FormGroup label="Reason" fieldId="epic-reason">
+                  <TextArea id="epic-reason" value={epicForm.reason} onChange={(_e, v) => patch({ reason: v })} placeholder="e.g., lack of contextual documentation in the console" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+                <FormGroup label="Assumption Source" fieldId="epic-assumption-source">
+                  <TextArea id="epic-assumption-source" value={epicForm.assumptionSource} onChange={(_e, v) => patch({ assumptionSource: v })} placeholder="e.g., PM feedback in Q4 retro, limited user interviews" rows={1} resizeOrientation="vertical" />
+                </FormGroup>
+              </div>
+            )}
+
+            {/* ── Definition of Done ── */}
+            <Divider style={{ margin: "12px 0 8px" }} />
+            <FormGroup label="Definition of Done" fieldId="epic-dod">
+              <Content component="small" style={{ color: "var(--pf-t--global--text--color--subtle)", marginBottom: 4, display: "block" }}>
+                Standard criteria (edit as needed):
+              </Content>
+              <TextArea
+                id="epic-dod"
+                value={epicForm.definitionOfDone}
+                onChange={(_e, val) => patch({ definitionOfDone: val })}
+                rows={5}
+                resizeOrientation="vertical"
+              />
+            </FormGroup>
+
+            {/* ── Additional Context ── */}
+            <Divider style={{ margin: "12px 0 8px" }} />
+            <FormGroup label="Additional Context (optional)" fieldId="epic-context">
+              <input
+                type="file"
+                ref={contextFileRef}
+                style={{ display: "none" }}
+                multiple
+                onChange={handleContextFileUpload}
+              />
+              <div style={{ marginBottom: 4, display: "flex", gap: 2 }}>
+                <Tooltip content="Insert bullet list">
+                  <Button variant="plain" size="sm" onClick={insertContextBullet} aria-label="Insert bullet list" style={{ padding: "2px 6px" }}>
+                    <ListIcon />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Insert link">
+                  <Button variant="plain" size="sm" onClick={insertContextUrl} aria-label="Insert link" style={{ padding: "2px 6px" }}>
+                    <LinkIcon />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Attach file reference">
+                  <Button variant="plain" size="sm" onClick={() => contextFileRef.current?.click()} aria-label="Attach file" style={{ padding: "2px 6px" }}>
+                    <PaperclipIcon />
+                  </Button>
+                </Tooltip>
+              </div>
+              <TextArea
+                id="epic-context"
+                value={epicForm.additionalContext}
+                onChange={(_e, val) => patch({ additionalContext: val })}
+                placeholder="Links to Figma, Google Docs, research findings, competitive analysis, etc."
+                rows={3}
+                resizeOrientation="vertical"
+              />
+            </FormGroup>
+          </Form>
+        </DrawerPanelBody>
+        {(() => {
+          const missing: string[] = [];
+          if (!epicForm.title.trim()) missing.push("Epic Title");
+          if (!epicForm.what.trim()) missing.push("What");
+          if (!epicForm.status) missing.push("Status");
+          if (!epicForm.assigneeName) missing.push("Assignee");
+          if (!epicForm.reporterName) missing.push("Reporter");
+          if (!epicForm.problemType) missing.push("Data informed?");
+          if (!epicForm.definitionOfDone.trim()) missing.push("Definition of Done");
+          const canSave = missing.length === 0;
+          const tooltipText = canSave
+            ? "Create this epic in Jira"
+            : `Missing required fields: ${missing.join(", ")}`;
+          return (
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            padding: "12px 16px",
+            borderTop: "1px solid var(--pf-t--global--border--color--default)",
+            backgroundColor: "var(--pf-t--global--background--color--primary--default)",
+            display: "flex",
+            gap: 8,
+          }}
+        >
+          <Tooltip
+            content={tooltipText}
+            position="top"
+          >
+            <span>
+              <Button
+                variant="primary"
+                onClick={onSave}
+                isDisabled={!canSave || isSaving}
+                isLoading={isSaving}
+              >
+                Create Epic in Jira
+              </Button>
+            </span>
+          </Tooltip>
+          <Button variant="link" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+          );
+        })()}
+      </div>
+    </DrawerPanelContent>
+  );
+}
 
 // ── Main App ──
 
@@ -1270,8 +1778,32 @@ export default function App() {
   const [isCloneMode, setIsCloneMode] = useState(false);
   const [isBacklogCreate, setIsBacklogCreate] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; title: string; variant: "success" | "danger" }[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [epicsExpanded, setEpicsExpanded] = useState(false);
+  const [searchTerm, setSearchTerm] = usePersistedState("dashboard_search", "");
+  const [epicsExpanded, setEpicsExpanded] = usePersistedState("epics_expanded", false);
+  const [epicDropdownOpen, setEpicDropdownOpen] = useState(false);
+  const [epicPanelOpen, setEpicPanelOpen] = useState(false);
+  const [epicForm, setEpicForm] = useState<EpicFormState>({
+    title: "[UXD EPIC] ",
+    what: "",
+    status: "To Do",
+    assigneeName: "Kendra Marchant",
+    reporterName: "Kendra Marchant",
+    problemType: "",
+    targetUser: "",
+    specificIssue: "",
+    dataSource: "",
+    specificMetrics: "",
+    impact: "",
+    reason: "",
+    assumptionSource: "",
+    definitionOfDone:
+      "- The primary deliverable or artifact is attached or linked to this epic.\n" +
+      "- The primary deliverable of this epic has been reviewed by stakeholders.\n" +
+      "- All child tasks or stories within this epic have been closed or transferred to a follow-up epic.\n" +
+      "- If follow-up development work is needed, a link to it has been added to this epic.",
+    additionalContext: "",
+  });
+  const [epicSaving, setEpicSaving] = useState(false);
   const cloneCounter = useRef(0);
   const toastIdRef = useRef(0);
 
@@ -1295,6 +1827,13 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!selectedIssue) loadData();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [loadData, selectedIssue]);
 
   const normalizedSearch = searchTerm.toLowerCase().trim();
 
@@ -1350,11 +1889,18 @@ export default function App() {
     []
   );
 
-  const handleModify = useCallback((issue: JiraIssue) => {
+  const handleModify = useCallback(async (issue: JiraIssue) => {
+    setEpicPanelOpen(false);
     setIsCloneMode(false);
     setIsBacklogCreate(false);
-    originalIssueRef.current = { ...issue, comments: [...(issue.comments ?? [])] };
-    setSelectedIssue(issue);
+    const fresh = await fetchSingleIssue(issue.key);
+    const baseline = fresh ?? issue;
+    console.log(`[handleModify] ${issue.key} — storyPoints local=${issue.storyPoints}, fresh=${baseline.storyPoints}`);
+    originalIssueRef.current = { ...baseline, comments: [...(baseline.comments ?? [])] };
+    setSelectedIssue(baseline);
+    if (fresh) {
+      setIssues((prev) => prev.map((i) => (i.key === fresh.key ? fresh : i)));
+    }
   }, []);
 
   const DEFAULT_DESCRIPTION_HTML = [
@@ -1384,7 +1930,8 @@ export default function App() {
     setSelectedIssue(clonedIssue);
   }, [DEFAULT_DESCRIPTION_HTML]);
 
-  const handleCreateIssue = useCallback((sprintName: string, sprintState: "active" | "future" | "backlog") => {
+  const handleCreateIssue = useCallback((sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => {
+    setEpicPanelOpen(false);
     cloneCounter.current += 1;
     const newIssue: JiraIssue = {
       key: `CPUX-NEW-${cloneCounter.current}`,
@@ -1399,8 +1946,8 @@ export default function App() {
       storyPoints: null,
       sprintName: sprintState === "backlog" ? "" : sprintName,
       sprintState: sprintState === "backlog" ? "" : sprintState,
-      sprintStartDate: "",
-      sprintEndDate: "",
+      sprintStartDate: startDate ?? "",
+      sprintEndDate: endDate ?? "",
       assigneeName: "",
       assigneeAvatar: "",
       reporterName: "Kendra Marchant",
@@ -1513,6 +2060,85 @@ export default function App() {
     setSelectedIssue(null);
   }, []);
 
+  const handleCreateEpic = useCallback(async () => {
+    if (!epicForm.title.trim()) return;
+    setEpicSaving(true);
+    try {
+      const descriptionParts: string[] = [];
+
+      if (epicForm.what.trim()) {
+        descriptionParts.push(`<h3>What</h3>\n<p>${epicForm.what.trim()}</p>`);
+      }
+
+      if ((epicForm.problemType === "problem-statement-uxd-data-driven" || epicForm.problemType === "problem-statement-data-driven") && epicForm.targetUser.trim()) {
+        const stmt =
+          `${epicForm.targetUser.trim()} struggles with ${epicForm.specificIssue.trim() || "[specific issue]"}. ` +
+          `Data from ${epicForm.dataSource.trim() || "[source]"} shows ${epicForm.specificMetrics.trim() || "[metrics]"}. ` +
+          `This impacts ${epicForm.impact.trim() || "[user goal/business goal]"}.`;
+        descriptionParts.push(`<h3>Problem Statement</h3>\n<p>${stmt}</p>`);
+      } else if (epicForm.problemType === "problem-statement-assumption" && epicForm.targetUser.trim()) {
+        const stmt =
+          `We assume that ${epicForm.targetUser.trim()} experiences ${epicForm.specificIssue.trim() || "[specific issue]"} ` +
+          `due to ${epicForm.reason.trim() || "[reason]"}. ` +
+          `This assumption is based on ${epicForm.assumptionSource.trim() || "[source]"}.`;
+        descriptionParts.push(`<h3>Problem Statement</h3>\n<p>${stmt}</p>`);
+      }
+
+      const allDodLines = epicForm.definitionOfDone.trim().split("\n");
+      const bullets = allDodLines
+        .map((l) => l.replace(/^-\s*/, "").trim())
+        .filter(Boolean)
+        .map((l) => `<li>${l}</li>`)
+        .join("\n");
+      if (bullets) {
+        descriptionParts.push(
+          `<h3>Definition of Done</h3>\n<p>This Epic should be Closed once the following criteria are met:</p>\n<ul>\n${bullets}\n</ul>`
+        );
+      }
+
+      if (epicForm.additionalContext.trim()) {
+        descriptionParts.push(`<h3>Additional Context</h3>\n<p>${epicForm.additionalContext.trim()}</p>`);
+      }
+
+      const epicIssue: JiraIssue = {
+        key: "",
+        summary: epicForm.title.trim(),
+        issueType: "Epic",
+        status: epicForm.status || "To Do",
+        statusCategory: "To Do",
+        priority: "Unprioritized",
+        activityType: "",
+        epicName: "",
+        epicKey: "",
+        storyPoints: null,
+        sprintName: "",
+        sprintState: "",
+        sprintStartDate: "",
+        sprintEndDate: "",
+        assigneeName: epicForm.assigneeName,
+        assigneeAvatar: "",
+        reporterName: epicForm.reporterName,
+        description: descriptionParts.join("\n"),
+        dueDate: "",
+        comments: [],
+      };
+
+      const created = await createIssue(epicIssue);
+      addToast(`Epic ${created.key} created successfully`);
+      setEpicPanelOpen(false);
+      loadData(true);
+    } catch (err) {
+      console.error("Failed to create epic", err);
+      addToast(`Failed to create epic: ${(err as Error).message}`, "danger");
+    } finally {
+      setEpicSaving(false);
+    }
+  }, [epicForm, addToast, loadData]);
+
+  const handleEpicPanelClose = useCallback(() => {
+    setEpicPanelOpen(false);
+  }, []);
+
   const drawerPanel = selectedIssue ? (
     <IssueDetailPanel
       key={selectedIssue.key + (isCloneMode ? "-clone" : "")}
@@ -1526,6 +2152,16 @@ export default function App() {
       isClone={isCloneMode}
       isBacklog={isBacklogCreate}
       isSaving={saving}
+    />
+  ) : epicPanelOpen ? (
+    <EpicCreatePanel
+      epicForm={epicForm}
+      setEpicForm={setEpicForm}
+      onSave={handleCreateEpic}
+      onClose={handleEpicPanelClose}
+      isSaving={epicSaving}
+      allStatuses={allStatuses}
+      allMembers={allMembers}
     />
   ) : undefined;
 
@@ -1541,9 +2177,9 @@ export default function App() {
           />
         ))}
       </AlertGroup>
-      <Drawer isExpanded={selectedIssue !== null} onExpand={() => {}}>
+      <Drawer isExpanded={selectedIssue !== null || epicPanelOpen} onExpand={() => {}}>
         <DrawerContent panelContent={drawerPanel ?? <></>}>
-          <DrawerContentBody onClick={() => { if (selectedIssue) handlePanelClose(); }}>
+          <DrawerContentBody onClick={() => { if (selectedIssue) handlePanelClose(); if (epicPanelOpen) handleEpicPanelClose(); }}>
       {/* ── Header toolbar ── */}
       <PageSection aria-label="Dashboard header">
         <Toolbar>
@@ -1684,15 +2320,65 @@ export default function App() {
                     }
                   >
                     <div style={{ padding: "12px 0" }}>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        icon={<PlusCircleIcon />}
-                        component="a"
-                        href={`cursor://file/${import.meta.env.VITE_PROJECT_PATH || ""}/epic-template.md`}
+                      <Dropdown
+                        isOpen={epicDropdownOpen}
+                        onSelect={() => setEpicDropdownOpen(false)}
+                        onOpenChange={setEpicDropdownOpen}
+                        toggle={(toggleRef) => (
+                          <MenuToggle
+                            ref={toggleRef}
+                            onClick={() => setEpicDropdownOpen((prev) => !prev)}
+                            isExpanded={epicDropdownOpen}
+                            variant="primary"
+                            icon={<PlusCircleIcon />}
+                          >
+                            Create Epic
+                          </MenuToggle>
+                        )}
+                        popperProps={{ position: "start" }}
                       >
-                        Create epic in Cursor
-                      </Button>
+                        <DropdownList>
+                          <DropdownItem
+                            key="cursor"
+                            component="a"
+                            href={`cursor://file/${import.meta.env.VITE_PROJECT_PATH || ""}/epic-template.md`}
+                            icon={<ExternalLinkAltIcon />}
+                          >
+                            Help me write the epic in Cursor
+                          </DropdownItem>
+                          <DropdownItem
+                            key="form"
+                            onClick={() => {
+                              setEpicForm({
+                                title: "[UXD EPIC] ",
+                                what: "",
+                                status: "To Do",
+                                assigneeName: "Kendra Marchant",
+                                reporterName: "Kendra Marchant",
+                                problemType: "",
+                                targetUser: "",
+                                specificIssue: "",
+                                dataSource: "",
+                                specificMetrics: "",
+                                impact: "",
+                                reason: "",
+                                assumptionSource: "",
+                                definitionOfDone:
+                                  "- The primary deliverable or artifact is attached or linked to this epic.\n" +
+                                  "- The primary deliverable of this epic has been reviewed by stakeholders.\n" +
+                                  "- All child tasks or stories within this epic have been closed or transferred to a follow-up epic.\n" +
+                                  "- If follow-up development work is needed, a link to it has been added to this epic.",
+                                additionalContext: "",
+                              });
+                              setSelectedIssue(null);
+                              setEpicPanelOpen(true);
+                            }}
+                            icon={<ListIcon />}
+                          >
+                            Show me a GUI form
+                          </DropdownItem>
+                        </DropdownList>
+                      </Dropdown>
                     </div>
                     <Table aria-label="Active Epics table" variant="compact">
                       <Thead>
