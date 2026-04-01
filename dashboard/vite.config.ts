@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage, ServerResponse } from "http";
 import https from "https";
@@ -97,5 +97,9 @@ export default defineConfig(({ command, mode }) => {
   return {
     base: command === "build" ? "/JiraProjectKendra/" : "/",
     plugins: [react(), jiraProxyPlugin(env)],
+    server: {
+      port: 5173,
+      strictPort: true,
+    },
   };
 });

@@ -61,11 +61,12 @@ import {
   Th,
   Td,
 } from "@patternfly/react-table";
-import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon, PaperclipIcon, LinkIcon, PlusCircleIcon, TimesIcon } from "@patternfly/react-icons";
+import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon, MagicIcon, PaperclipIcon, LinkIcon, PlusCircleIcon } from "@patternfly/react-icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
 import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, attachFile, fetchSingleIssue } from "./services/jiraService";
+import { SprintHighlightsModal } from "./SprintHighlightsModal";
 
 const JIRA_CPUX_BOARD_URL =
   "https://redhat.atlassian.net/jira/software/c/projects/CPUX/boards/6195";
@@ -418,7 +419,7 @@ function DroppableTab({ droppableId, label, subtitle, isActive, onClick, style }
   );
 }
 
-function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => void }) {
+function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate, onOpenSprintHighlights }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => void; onOpenSprintHighlights: (group: SprintGroup) => void }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const defaultTab = useMemo(() => {
     const today = new Date();
@@ -440,8 +441,18 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
       : { name, state: "future" as const, startDate, endDate, issues: [] };
   });
 
+  const tabCount = tabs.length;
+  const maxTabIndex = Math.max(0, tabCount - 1);
+  useEffect(() => {
+    if (activeTab > maxTabIndex || activeTab < 0) {
+      setActiveTab(Math.min(defaultTab, maxTabIndex));
+    }
+  }, [activeTab, maxTabIndex, defaultTab, setActiveTab]);
+
+  const safeTabIndex = Math.min(Math.max(0, activeTab), maxTabIndex);
+  const activeTabData = tabs[safeTabIndex];
+
   const totalTickets = tabs.reduce((sum, t) => sum + t.issues.length, 0);
-  const activeTabData = tabs[activeTab];
 
   return (
     <ExpandableSection
@@ -472,7 +483,7 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
             droppableId={`tab:${tab.state}:${tab.name}`}
             label={tab.name.replace(" 2026", "")}
             subtitle={tab.startDate ? `${tab.startDate} – ${tab.endDate}` : undefined}
-            isActive={idx === activeTab}
+            isActive={idx === safeTabIndex}
             onClick={() => setActiveTab(idx)}
             style={{ marginRight: 32 }}
           />
@@ -480,8 +491,9 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
       </div>
       {activeTabData && (
         <>
-          <div style={{ padding: "12px 0" }}>
+          <div style={{ padding: "12px 0", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <Button variant="primary" size="sm" onClick={() => onCreate(activeTabData.name, activeTabData.state as "active" | "future", activeTabData.startDate, activeTabData.endDate)}>+ Create story in this sprint</Button>
+            <Button variant="secondary" size="sm" icon={<MagicIcon />} onClick={() => onOpenSprintHighlights(activeTabData)}>Generate sprint highlights</Button>
           </div>
           <SprintTable group={activeTabData} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${activeTabData.state}:${activeTabData.name}`} onModify={onModify} onClone={onClone} />
         </>
@@ -851,11 +863,13 @@ function IssueDetailPanel({
       }
     }
 
+    const now = new Date();
     const comment: JiraComment = {
       author: "You",
       authorAvatar: "",
       body: htmlParts.join(""),
-      created: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      created: now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      createdIso: now.toISOString(),
     };
     setDraft((prev) => ({ ...prev, comments: [comment, ...prev.comments] }));
     setNewComment("");
@@ -1251,8 +1265,7 @@ function IssueDetailPanel({
                           <Content component="small"><strong>{c.author}</strong> · {c.created}</Content>
                         </FlexItem>
                       </Flex>
-                      <Content
-                        component="div"
+                      <div
                         className="description-view"
                         style={{ marginTop: 4, paddingLeft: 32 }}
                         dangerouslySetInnerHTML={{ __html: c.body }}
@@ -1804,6 +1817,7 @@ export default function App() {
     additionalContext: "",
   });
   const [epicSaving, setEpicSaving] = useState(false);
+  const [highlightSprintGroup, setHighlightSprintGroup] = useState<SprintGroup | null>(null);
   const cloneCounter = useRef(0);
   const toastIdRef = useRef(0);
 
@@ -2177,6 +2191,15 @@ export default function App() {
           />
         ))}
       </AlertGroup>
+      {highlightSprintGroup ? (
+        <SprintHighlightsModal
+          isOpen
+          onClose={() => setHighlightSprintGroup(null)}
+          sprintGroup={highlightSprintGroup}
+          sprintOptions={sprintGroups.filter((g) => g.state !== "backlog")}
+          addToast={addToast}
+        />
+      ) : null}
       <Drawer isExpanded={selectedIssue !== null || epicPanelOpen} onExpand={() => {}}>
         <DrawerContent panelContent={drawerPanel ?? <></>}>
           <DrawerContentBody onClick={() => { if (selectedIssue) handlePanelClose(); if (epicPanelOpen) handleEpicPanelClose(); }}>
@@ -2272,6 +2295,7 @@ export default function App() {
                       onModify={handleModify}
                       onClone={handleClone}
                       onCreate={handleCreateIssue}
+                      onOpenSprintHighlights={setHighlightSprintGroup}
                     />
                   </CardBody>
                 </Card>
