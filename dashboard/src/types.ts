@@ -2,7 +2,10 @@ export interface JiraComment {
   author: string;
   authorAvatar: string;
   body: string;
+  /** Display date in the issue panel */
   created: string;
+  /** ISO 8601 from Jira when available (sprint highlight date filtering) */
+  createdIso?: string;
 }
 
 export interface JiraIssue {

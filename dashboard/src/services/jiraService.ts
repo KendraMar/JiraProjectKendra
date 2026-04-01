@@ -271,30 +271,6 @@ function extractText(adf: unknown): string {
   return adfToHtml(adf);
 }
 
-function parseInlineHtml(text: string): Record<string, unknown>[] {
-  const aRe = /<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
-  const nodes: Record<string, unknown>[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = aRe.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      const plain = text.slice(lastIndex, match.index);
-      if (plain) nodes.push({ type: "text", text: plain });
-    }
-    nodes.push({
-      type: "text",
-      text: match[2],
-      marks: [{ type: "link", attrs: { href: match[1] } }],
-    });
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) {
-    const rest = text.slice(lastIndex);
-    if (rest) nodes.push({ type: "text", text: rest });
-  }
-  return nodes.length ? nodes : [{ type: "text", text }];
-}
-
 function htmlToAdf(html: string): Record<string, unknown> {
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<body>${html}</body>`, "text/html");
@@ -511,6 +487,7 @@ function parseComments(raw: RawComment[]): JiraComment[] {
     authorAvatar: c.author.avatarUrls["32x32"],
     body: extractText(c.body),
     created: new Date(c.created).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    createdIso: c.created,
   }));
 }
 
@@ -724,6 +701,30 @@ export async function fetchSingleIssue(issueKey: string): Promise<JiraIssue | nu
   } catch {
     return null;
   }
+}
+
+/** Full comment history for an issue (search results may truncate the embedded `comment` field). */
+export async function fetchCommentsForIssue(issueKey: string): Promise<JiraComment[]> {
+  if (!CLOUD_ID || !EMAIL || !API_TOKEN) return [];
+
+  const all: RawComment[] = [];
+  let startAt = 0;
+  const maxResults = 100;
+
+  for (;;) {
+    const res = await jiraFetch(
+      `${apiBase()}/rest/api/3/issue/${encodeURIComponent(issueKey)}/comment?startAt=${startAt}&maxResults=${maxResults}`,
+      { headers: authHeaders() }
+    );
+    if (!res.ok) throw new Error(`Jira comments ${res.status}`);
+    const data = (await res.json()) as { comments?: RawComment[]; total?: number };
+    const batch = data.comments ?? [];
+    all.push(...batch);
+    if (batch.length < maxResults || all.length >= (data.total ?? 0)) break;
+    startAt += maxResults;
+  }
+
+  return parseComments(all);
 }
 
 // ── Sprint ID resolution ──

@@ -75,3 +75,83 @@
 .description-view em {
   font-style: italic !important;
 }
+
+/* Sprint highlights modal: visible unordered bullets */
+ul.sprint-highlights-list {
+  list-style-type: disc;
+  padding-left: var(--pf-t--global--spacer--xl, 1.5rem);
+  margin: 0;
+}
+
+ul.sprint-highlights-list .pf-v6-c-list__item,
+ul.sprint-highlights-list li {
+  display: list-item;
+}
+
+ul.sprint-highlights-list li + li {
+  margin-top: var(--pf-t--global--spacer--sm, 0.5rem);
+}
+
+/* Sprint highlights modal: drag-and-drop rows */
+ul.sprint-highlights-dnd-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-t--global--spacer--xs, 0.25rem);
+}
+
+.sprint-highlight-dnd-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pf-t--global--spacer--sm, 0.5rem);
+  padding: var(--pf-t--global--spacer--xs, 0.25rem) 0;
+  border-bottom: 1px solid var(--pf-t--global--border--color--default);
+}
+
+.sprint-highlight-dnd-row:last-child {
+  border-bottom: none;
+}
+
+.sprint-highlight-dnd-handle {
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--pf-t--global--text--color--subtle);
+  padding-top: 2px;
+  touch-action: none;
+}
+
+.sprint-highlight-dnd-handle:active {
+  cursor: grabbing;
+}
+
+.sprint-highlight-dnd-visibility {
+  flex-shrink: 0;
+  color: var(--pf-t--global--text--color--subtle);
+  padding: 0 !important;
+  min-width: 2rem;
+  height: 2rem;
+}
+
+.sprint-highlight-dnd-row--hidden {
+  opacity: 0.55;
+  color: var(--pf-t--global--text--color--disabled);
+}
+
+.sprint-highlight-dnd-row--hidden .sprint-highlight-dnd-handle,
+.sprint-highlight-dnd-row--hidden .sprint-highlight-dnd-visibility {
+  opacity: 1;
+  color: var(--pf-t--global--text--color--subtle);
+}
+
+/* Off-screen host for sprint slide PNG (html-to-image) */
+.sprint-slide-capture-host {
+  position: fixed;
+  left: -12000px;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
