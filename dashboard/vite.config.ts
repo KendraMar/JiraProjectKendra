@@ -98,7 +98,7 @@ export default defineConfig(({ command, mode }) => {
     base: command === "build" ? "/JiraProjectKendra/" : "/",
     plugins: [react(), jiraProxyPlugin(env)],
     server: {
-      port: 5173,
+      port: 5174,
       strictPort: true,
     },
   };

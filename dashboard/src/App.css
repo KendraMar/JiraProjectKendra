@@ -92,6 +92,67 @@ ul.sprint-highlights-list li + li {
   margin-top: var(--pf-t--global--spacer--sm, 0.5rem);
 }
 
+/* Sprint highlights modal: drag by title / description (react-rnd handle) */
+.sprint-highlights-modal-drag-handle {
+  cursor: grab;
+  user-select: none;
+}
+
+.sprint-highlights-modal-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Sprint highlights modal: re-resizable hit layer (right corners only; glyphs live inside modal below) */
+.sprint-highlights-rnd-handles {
+  pointer-events: none;
+}
+
+.sprint-highlights-rnd-corner {
+  pointer-events: auto;
+  box-sizing: border-box;
+  background: transparent !important;
+  border: none !important;
+}
+
+/*
+ * Triangles sit inside `.pf-v6-c-modal-box.sprint-highlights-rnd-modal` (not on the outer resizable shell),
+ * so they stay on the card instead of beside border/shadow.
+ */
+.sprint-highlights-modal-resize-glyph {
+  position: absolute;
+  /* Above wizard footer (xs) so the bottom-right triangle is not painted under it */
+  z-index: var(--pf-t--global--z-index--sm);
+  width: 0;
+  height: 0;
+  border-style: solid;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.12s ease;
+  --sprint-highlights-modal-resize-glyph-color: var(--pf-t--global--border--color--strong, #6a6e73);
+}
+
+.pf-v6-c-modal-box.sprint-highlights-rnd-modal:hover .sprint-highlights-modal-resize-glyph {
+  opacity: 0.95;
+}
+
+/*
+ * Near the outer corners so they sit roughly over the 44px re-resizable hit zone (handles are on the shell at top/right: 0).
+ */
+.sprint-highlights-modal-resize-glyph--tr {
+  top: var(--pf-t--global--spacer--xs, 0.25rem);
+  right: var(--pf-t--global--spacer--xs, 0.25rem);
+  border-width: 9px 0 0 9px;
+  border-color: var(--sprint-highlights-modal-resize-glyph-color) transparent transparent transparent;
+}
+
+.sprint-highlights-modal-resize-glyph--br {
+  bottom: var(--pf-t--global--spacer--xs, 0.25rem);
+  right: var(--pf-t--global--spacer--xs, 0.25rem);
+  /* Right angle at bottom-right: colored bottom + transparent left */
+  border-width: 0 0 9px 9px;
+  border-color: transparent transparent var(--sprint-highlights-modal-resize-glyph-color) transparent;
+}
+
 /* Sprint highlights modal: drag-and-drop rows */
 ul.sprint-highlights-dnd-list {
   display: flex;

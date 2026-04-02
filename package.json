@@ -1,0 +1,10 @@
+{
+  "name": "jiraprojectkendra",
+  "private": true,
+  "description": "Root scripts; the dashboard app lives in dashboard/",
+  "scripts": {
+    "dev": "npm --prefix dashboard run dev",
+    "build": "npm --prefix dashboard run build",
+    "lint": "npm --prefix dashboard run lint"
+  }
+}
