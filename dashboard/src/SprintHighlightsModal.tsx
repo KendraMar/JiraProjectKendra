@@ -5,26 +5,30 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type Ref,
 } from "react";
+import { createPortal } from "react-dom";
+import { Rnd } from "react-rnd";
 import {
   ActionList,
   ActionListGroup,
   ActionListItem,
   Alert,
+  Backdrop,
   Button,
   Checkbox,
   Content,
-  Flex,
-  FlexItem,
   Dropdown,
   DropdownItem,
   DropdownList,
+  Flex,
+  FlexItem,
+  FocusTrap,
   Label,
   MenuToggle,
   type MenuToggleElement,
-  Modal,
   Spinner,
   TextArea,
   Title,
@@ -41,6 +45,7 @@ import PencilAltIcon from "@patternfly/react-icons/dist/esm/icons/pencil-alt-ico
 import TimesIcon from "@patternfly/react-icons/dist/esm/icons/times-icon";
 import { css } from "@patternfly/react-styles";
 import inlineEditStyles from "@patternfly/react-styles/css/components/InlineEdit/inline-edit";
+import modalBoxStyles from "@patternfly/react-styles/css/components/ModalBox/modal-box";
 import wizardStyles from "@patternfly/react-styles/css/components/Wizard/wizard";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { toPng } from "html-to-image";
@@ -71,6 +76,72 @@ import {
 const STEP_SELECT = "hl-select";
 const STEP_EDIT = "hl-edit";
 const STEP_SLIDE = "hl-slide";
+
+const SPRINT_HIGHLIGHTS_DRAG_HANDLE = "sprint-highlights-modal-drag-handle";
+
+const SPRINT_HIGHLIGHTS_RND_CORNER = "sprint-highlights-rnd-corner";
+
+/**
+ * Right corners only: wizard nav blocks left-side resize; width still changes from the right edge.
+ * Edge strips stay off.
+ */
+const sprintHighlightsCornerOnlyResize = {
+  top: false,
+  right: false,
+  bottom: false,
+  left: false,
+  topLeft: false,
+  topRight: true,
+  bottomLeft: false,
+  bottomRight: true,
+};
+
+/**
+ * Corner hit targets on the resizable shell (top/right and bottom/right = 0).
+ * Do not drive these from ResizeObserver + setState — that re-renders during resize and breaks re-resizable.
+ */
+const sprintHighlightsResizeHandleStyles = {
+  topRight: {
+    position: "absolute" as const,
+    width: 44,
+    height: 44,
+    top: 0,
+    right: 0,
+    left: "auto" as const,
+    bottom: "auto" as const,
+    margin: 0,
+    padding: 0,
+  },
+  bottomRight: {
+    position: "absolute" as const,
+    width: 44,
+    height: 44,
+    bottom: 0,
+    right: 0,
+    left: "auto" as const,
+    top: "auto" as const,
+    margin: 0,
+    padding: 0,
+  },
+};
+
+const sprintHighlightsResizeHandleWrapperStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  pointerEvents: "none",
+  zIndex: "var(--pf-t--global--z-index--lg)",
+};
+
+function sprintHighlightsRndDefaultBounds() {
+  if (typeof window === "undefined") {
+    return { x: 24, y: 24, width: 1120, height: 600 };
+  }
+  const width = Math.min(1120, Math.max(480, window.innerWidth - 32));
+  const height = Math.min(760, Math.max(400, Math.floor(window.innerHeight * 0.78)));
+  const x = Math.max(16, Math.round((window.innerWidth - width) / 2));
+  const y = Math.max(16, Math.round((window.innerHeight - height) / 2));
+  return { x, y, width, height };
+}
 
 function cloneHighlightBuckets(b: HighlightBucketState): HighlightBucketState {
   return Object.fromEntries(THEMATIC_GROUP_ORDER.map((g) => [g, [...b[g]]])) as HighlightBucketState;
@@ -317,12 +388,15 @@ function SprintHighlightsWizardHeader({
         </Dropdown>
         <Button variant="plain" aria-label="Close sprint highlights" onClick={() => close()} icon={<TimesIcon />} />
       </div>
-      <div className={css(wizardStyles.wizardTitle)}>
+      <div className={css(wizardStyles.wizardTitle, SPRINT_HIGHLIGHTS_DRAG_HANDLE)}>
         <h2 className={css(wizardStyles.wizardTitleText)} id="sprint-highlights-wizard-title">
           Generate sprint highlights
         </h2>
       </div>
-      <div className={css(wizardStyles.wizardDescription)} id="sprint-highlights-wizard-desc">
+      <div
+        className={css(wizardStyles.wizardDescription, SPRINT_HIGHLIGHTS_DRAG_HANDLE)}
+        id="sprint-highlights-wizard-desc"
+      >
         <Content component="p">
           Automatically generate highlights of what&apos;s been worked on in this sprint and copy a ready-to-add report
           to your clipboard.
@@ -621,6 +695,18 @@ export function SprintHighlightsModal({ isOpen, onClose, sprintGroup, sprintOpti
     onClose();
   }, [onClose]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        handleWizardClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, handleWizardClose]);
+
   const wizardFooter = useCallback(
     (
       activeStep: WizardStepType,
@@ -725,7 +811,7 @@ export function SprintHighlightsModal({ isOpen, onClose, sprintGroup, sprintOpti
                     onClick={() => void handleCopySlide()}
                     isDisabled={!slidePngDataUrl || slideGenerating}
                   >
-                    Create highlights slide
+                    Copy highlights slide
                   </Button>
                 </ActionListItem>
                 <ActionListItem>
@@ -766,32 +852,96 @@ export function SprintHighlightsModal({ isOpen, onClose, sprintGroup, sprintOpti
     ]
   );
 
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={handleWizardClose}
-      variant="large"
-      aria-labelledby="sprint-highlights-wizard-title"
-      aria-describedby="sprint-highlights-wizard-desc"
-    >
-      <Wizard
+  if (!isOpen) return null;
+
+  const rndDefault = sprintHighlightsRndDefaultBounds();
+
+  return createPortal(
+    <>
+      <Backdrop
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) handleWizardClose();
+        }}
+      />
+      <Rnd
         key={wizardInstanceKey}
-        height="min(78vh, 760px)"
-        width="min(100%, 1120px)"
-        navAriaLabel="Sprint highlights steps"
-        header={
-          <SprintHighlightsWizardHeader
-            sprintOptions={sprintOptions}
-            selectedSprint={activeSprintGroup}
-            onSelectSprint={handleSprintChange}
-          />
-        }
-        footer={wizardFooter}
-        onClose={handleWizardClose}
-        onStepChange={(_e, current) => setWizardStepId(String(current.id))}
-        isVisitRequired
-        shouldFocusContent
+        className="sprint-highlights-rnd-root"
+        bounds="window"
+        dragHandleClassName={SPRINT_HIGHLIGHTS_DRAG_HANDLE}
+        default={rndDefault}
+        minWidth={480}
+        minHeight={400}
+        maxWidth={typeof window !== "undefined" ? window.innerWidth - 16 : 4000}
+        maxHeight={typeof window !== "undefined" ? window.innerHeight - 16 : 4000}
+        enableResizing={sprintHighlightsCornerOnlyResize}
+        resizeHandleStyles={sprintHighlightsResizeHandleStyles}
+        resizeHandleClasses={{
+          topRight: SPRINT_HIGHLIGHTS_RND_CORNER,
+          bottomRight: SPRINT_HIGHLIGHTS_RND_CORNER,
+        }}
+        resizeHandleWrapperClass="sprint-highlights-rnd-handles"
+        resizeHandleWrapperStyle={sprintHighlightsResizeHandleWrapperStyle}
+        style={{
+          zIndex: "calc(var(--pf-t--global--z-index--lg) + 1)",
+          position: "fixed",
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
+        <div
+          className={css(modalBoxStyles.modalBox, modalBoxStyles.modifiers.lg, "sprint-highlights-rnd-modal")}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sprint-highlights-wizard-title"
+          aria-describedby="sprint-highlights-wizard-desc"
+          style={{
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            maxHeight: "100%",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            margin: 0,
+          }}
+        >
+          <span
+            className="sprint-highlights-modal-resize-glyph sprint-highlights-modal-resize-glyph--tr"
+            aria-hidden
+          />
+          <span
+            className="sprint-highlights-modal-resize-glyph sprint-highlights-modal-resize-glyph--br"
+            aria-hidden
+          />
+          <FocusTrap
+            focusTrapOptions={{
+              clickOutsideDeactivates: true,
+              tabbableOptions: { displayCheck: "none" },
+            }}
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <Wizard
+              height="100%"
+              width="100%"
+              navAriaLabel="Sprint highlights steps"
+              header={
+                <SprintHighlightsWizardHeader
+                  sprintOptions={sprintOptions}
+                  selectedSprint={activeSprintGroup}
+                  onSelectSprint={handleSprintChange}
+                />
+              }
+              footer={wizardFooter}
+              onClose={handleWizardClose}
+              onStepChange={(_e, current) => setWizardStepId(String(current.id))}
+              isVisitRequired
+              shouldFocusContent
+            >
         <WizardStep
           id={STEP_SELECT}
           name="Select stories"
@@ -1019,7 +1169,11 @@ export function SprintHighlightsModal({ isOpen, onClose, sprintGroup, sprintOpti
             />
           </div>
         </WizardStep>
-      </Wizard>
-    </Modal>
+            </Wizard>
+          </FocusTrap>
+        </div>
+      </Rnd>
+    </>,
+    document.body
   );
 }
