@@ -23,6 +23,7 @@ export interface JiraIssue {
   sprintState: "active" | "future" | "closed" | "";
   sprintStartDate: string;
   sprintEndDate: string;
+  allSprints?: { name: string; state: string; startDate: string; endDate: string }[];
   assigneeName: string;
   assigneeAvatar: string;
   reporterName: string;
@@ -39,7 +40,7 @@ export interface JiraEpic {
 
 export interface SprintGroup {
   name: string;
-  state: "active" | "future" | "backlog";
+  state: "active" | "future" | "closed" | "backlog";
   startDate?: string;
   endDate?: string;
   issues: JiraIssue[];

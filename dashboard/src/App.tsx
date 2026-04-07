@@ -51,6 +51,10 @@ import {
   Tooltip,
   SearchInput,
   Form,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
 } from "@patternfly/react-core";
 import { FilterIcon } from "@patternfly/react-icons";
 import {
@@ -61,11 +65,11 @@ import {
   Th,
   Td,
 } from "@patternfly/react-table";
-import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon, MagicIcon, PaperclipIcon, LinkIcon, PlusCircleIcon } from "@patternfly/react-icons";
+import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, ExclamationCircleIcon, ExclamationTriangleIcon, GripVerticalIcon, EllipsisVIcon, ExternalLinkAltIcon, ListIcon, MagicIcon, CheckCircleIcon, PaperclipIcon, LinkIcon, PlusCircleIcon, TimesIcon } from "@patternfly/react-icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
-import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, attachFile, fetchSingleIssue } from "./services/jiraService";
+import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, completeSprint, attachFile, fetchSingleIssue } from "./services/jiraService";
 import { SprintHighlightsModal } from "./SprintHighlightsModal";
 
 const JIRA_CPUX_BOARD_URL =
@@ -127,6 +131,7 @@ function activityColor(activity: string): LabelColor {
 // ── Persisted state hook (survives HMR and data refreshes) ──
 
 function usePersistedState<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const prevKeyRef = useRef(key);
   const [state, setState] = useState<T>(() => {
     try {
       const stored = sessionStorage.getItem(key);
@@ -135,6 +140,18 @@ function usePersistedState<T>(key: string, initial: T): [T, React.Dispatch<React
       return initial;
     }
   });
+
+  useEffect(() => {
+    if (prevKeyRef.current !== key) {
+      prevKeyRef.current = key;
+      try {
+        const stored = sessionStorage.getItem(key);
+        setState(stored ? (JSON.parse(stored) as T) : initial);
+      } catch {
+        setState(initial);
+      }
+    }
+  }, [key, initial]);
 
   useEffect(() => {
     sessionStorage.setItem(key, JSON.stringify(state));
@@ -419,7 +436,7 @@ function DroppableTab({ droppableId, label, subtitle, isActive, onClick, style }
   );
 }
 
-function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate, onOpenSprintHighlights }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => void; onOpenSprintHighlights: (group: SprintGroup) => void }) {
+function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate, onOpenSprintHighlights, onCompleteSprint }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => void; onOpenSprintHighlights: (group: SprintGroup) => void; onCompleteSprint: (sprintName: string, moveToSprintName: string | null) => Promise<void> }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const defaultTab = useMemo(() => {
     const today = new Date();
@@ -433,6 +450,10 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
     return 0;
   }, []);
   const [activeTab, setActiveTab] = usePersistedState("sprint_active_tab", defaultTab);
+  const [completeModalOpen, setCompleteModalOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [moveDestination, setMoveDestination] = useState<string>("next");
+  const [destDropdownOpen, setDestDropdownOpen] = useState(false);
 
   const tabs: SprintGroup[] = HCC_SPRINTS.map(({ name, startDate, endDate }) => {
     const found = sprintGroups.find((g) => g.name === name);
@@ -453,6 +474,24 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
   const activeTabData = tabs[safeTabIndex];
 
   const totalTickets = tabs.reduce((sum, t) => sum + t.issues.length, 0);
+
+  const activeTabIdx = activeTab;
+  const incompleteCount = activeTabData ? activeTabData.issues.filter((i) => i.statusCategory !== "Done").length : 0;
+  const nextSprintName = activeTabIdx < HCC_SPRINTS.length - 1 ? HCC_SPRINTS[activeTabIdx + 1].name : null;
+  const otherSprints = HCC_SPRINTS.filter((_, i) => i !== activeTabIdx);
+
+  const resolvedDestination = moveDestination === "next" ? nextSprintName : moveDestination === "backlog" ? null : moveDestination;
+
+  const handleConfirmComplete = async () => {
+    if (!activeTabData) return;
+    setCompleting(true);
+    try {
+      await onCompleteSprint(activeTabData.name, resolvedDestination ?? null);
+      setCompleteModalOpen(false);
+    } finally {
+      setCompleting(false);
+    }
+  };
 
   return (
     <ExpandableSection
@@ -494,9 +533,71 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
           <div style={{ padding: "12px 0", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <Button variant="primary" size="sm" onClick={() => onCreate(activeTabData.name, activeTabData.state as "active" | "future", activeTabData.startDate, activeTabData.endDate)}>+ Create story in this sprint</Button>
             <Button variant="secondary" size="sm" icon={<MagicIcon />} onClick={() => onOpenSprintHighlights(activeTabData)}>Generate sprint highlights</Button>
+            {activeTabData.state === "active" && (
+              <Button variant="secondary" size="sm" icon={<CheckCircleIcon />} onClick={() => { setMoveDestination("next"); setCompleteModalOpen(true); }}>
+                Complete sprint
+              </Button>
+            )}
           </div>
-          <SprintTable group={activeTabData} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${activeTabData.state}:${activeTabData.name}`} onModify={onModify} onClone={onClone} />
+          <SprintTable key={activeTabData.name} group={activeTabData} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${activeTabData.state}:${activeTabData.name}`} onModify={onModify} onClone={onClone} />
         </>
+      )}
+      {completeModalOpen && activeTabData && (
+        <Modal
+          isOpen
+          onClose={() => setCompleteModalOpen(false)}
+          variant="small"
+          aria-labelledby="complete-sprint-title"
+        >
+          <ModalHeader title={`Complete ${activeTabData.name.replace(" 2026", "")}?`} titleIconVariant="warning" />
+          <ModalBody>
+            {incompleteCount > 0 ? (
+              <>
+                <Content component="p" style={{ marginBottom: 12 }}>
+                  <strong>{incompleteCount} incomplete {incompleteCount === 1 ? "issue" : "issues"}</strong> will be moved. Where should they go?
+                </Content>
+                <Dropdown
+                  isOpen={destDropdownOpen}
+                  onOpenChange={setDestDropdownOpen}
+                  onSelect={() => setDestDropdownOpen(false)}
+                  toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+                    <MenuToggle ref={toggleRef} onClick={() => setDestDropdownOpen((o) => !o)} isExpanded={destDropdownOpen} style={{ width: "100%" }}>
+                      {moveDestination === "next" && nextSprintName ? nextSprintName : moveDestination === "backlog" ? "Backlog" : moveDestination}
+                    </MenuToggle>
+                  )}
+                >
+                  <DropdownList>
+                    {nextSprintName && (
+                      <DropdownItem key="next" onClick={() => setMoveDestination("next")}>
+                        {nextSprintName} (next sprint)
+                      </DropdownItem>
+                    )}
+                    {otherSprints.filter((s) => s.name !== nextSprintName).map((s) => (
+                      <DropdownItem key={s.name} onClick={() => setMoveDestination(s.name)}>
+                        {s.name}
+                      </DropdownItem>
+                    ))}
+                    <DropdownItem key="backlog" onClick={() => setMoveDestination("backlog")}>
+                      Backlog
+                    </DropdownItem>
+                  </DropdownList>
+                </Dropdown>
+              </>
+            ) : (
+              <Content component="p">
+                All issues in this sprint are done. Ready to close it.
+              </Content>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="primary" onClick={handleConfirmComplete} isLoading={completing} isDisabled={completing}>
+              {completing ? "Completing…" : "Complete sprint"}
+            </Button>
+            <Button variant="link" onClick={() => setCompleteModalOpen(false)} isDisabled={completing}>
+              Cancel
+            </Button>
+          </ModalFooter>
+        </Modal>
       )}
     </ExpandableSection>
   );
@@ -2149,6 +2250,20 @@ export default function App() {
     }
   }, [epicForm, addToast, loadData]);
 
+  const handleCompleteSprint = useCallback(async (sprintName: string, moveToSprintName: string | null) => {
+    try {
+      const result = await completeSprint(sprintName, moveToSprintName ?? undefined);
+      if (result.movedKeys.length > 0) {
+        addToast(`${sprintName.replace(" 2026", "")} completed. ${result.movedKeys.length} incomplete ${result.movedKeys.length === 1 ? "issue" : "issues"} moved to ${moveToSprintName ?? "backlog"}.`);
+      } else {
+        addToast(`${sprintName.replace(" 2026", "")} completed.`);
+      }
+      loadData(true);
+    } catch (err) {
+      addToast(`Failed to complete sprint: ${(err as Error).message}`, "danger");
+    }
+  }, [addToast, loadData]);
+
   const handleEpicPanelClose = useCallback(() => {
     setEpicPanelOpen(false);
   }, []);
@@ -2296,6 +2411,7 @@ export default function App() {
                       onClone={handleClone}
                       onCreate={handleCreateIssue}
                       onOpenSprintHighlights={setHighlightSprintGroup}
+                      onCompleteSprint={handleCompleteSprint}
                     />
                   </CardBody>
                 </Card>

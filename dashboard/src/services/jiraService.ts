@@ -505,7 +505,9 @@ function parseIssue(raw: RawIssue): JiraIssue {
   }
   const activeSprint = sprints.find((s) => s.state === "active");
   const futureSprint = sprints.find((s) => s.state === "future");
-  const sprint = activeSprint ?? futureSprint ?? null;
+  const closedSprint = sprints.find((s) => s.state === "closed");
+  const sprint = activeSprint ?? futureSprint ?? closedSprint ?? null;
+  const allSprints = sprints.filter((s) => s.state === "active" || s.state === "future" || s.state === "closed");
 
   const activityField = f[FIELD_ACTIVITY_TYPE] as { value: string } | null;
   const parentIsEpic =
@@ -531,6 +533,12 @@ function parseIssue(raw: RawIssue): JiraIssue {
     sprintState: (sprint?.state as JiraIssue["sprintState"]) ?? "",
     sprintStartDate: formatSprintDate(sprint?.startDate),
     sprintEndDate: formatSprintDate(sprint?.endDate),
+    allSprints: allSprints.map((s) => ({
+      name: s.name ?? "",
+      state: s.state ?? "",
+      startDate: formatSprintDate(s.startDate),
+      endDate: formatSprintDate(s.endDate),
+    })),
     assigneeName: f.assignee?.displayName ?? "Unassigned",
     assigneeAvatar: f.assignee?.avatarUrls?.["32x32"] ?? "",
     reporterName: f.reporter?.displayName ?? "",
@@ -543,46 +551,57 @@ function parseIssue(raw: RawIssue): JiraIssue {
 // ── Grouping ──
 
 export function groupBySprint(issues: JiraIssue[]): SprintGroup[] {
-  const activeMap = new Map<string, JiraIssue[]>();
-  const futureMap = new Map<string, JiraIssue[]>();
+  const sprintMap = new Map<string, { state: string; startDate: string; endDate: string; issues: JiraIssue[] }>();
   const backlog: JiraIssue[] = [];
 
   for (const issue of issues) {
-    if (issue.sprintState === "active") {
-      const list = activeMap.get(issue.sprintName) ?? [];
-      list.push(issue);
-      activeMap.set(issue.sprintName, list);
-    } else if (issue.sprintState === "future") {
-      const list = futureMap.get(issue.sprintName) ?? [];
-      list.push(issue);
-      futureMap.set(issue.sprintName, list);
-    } else if (issue.statusCategory !== "Done") {
+    const sprintEntries = issue.allSprints ?? [];
+    if (sprintEntries.length === 0) {
+      if (issue.statusCategory !== "Done") backlog.push(issue);
+      continue;
+    }
+
+    let placed = false;
+    for (const s of sprintEntries) {
+      if (!s.name || !s.state) continue;
+      const existing = sprintMap.get(s.name);
+      if (existing) {
+        existing.issues.push(issue);
+      } else {
+        sprintMap.set(s.name, {
+          state: s.state,
+          startDate: s.startDate,
+          endDate: s.endDate,
+          issues: [issue],
+        });
+      }
+      placed = true;
+    }
+    if (!placed && issue.statusCategory !== "Done") {
       backlog.push(issue);
     }
   }
 
+  const stateOrder: Record<string, number> = { closed: 0, active: 1, future: 2 };
   const groups: SprintGroup[] = [];
 
-  for (const [name, sprintIssues] of activeMap) {
-    const sample = sprintIssues[0];
+  for (const [name, data] of sprintMap) {
     groups.push({
       name,
-      state: "active",
-      startDate: sample.sprintStartDate,
-      endDate: sample.sprintEndDate,
-      issues: sprintIssues,
+      state: data.state as SprintGroup["state"],
+      startDate: data.startDate || undefined,
+      endDate: data.endDate || undefined,
+      issues: data.issues,
     });
   }
-  for (const [name, sprintIssues] of futureMap) {
-    const sample = sprintIssues[0];
-    groups.push({
-      name,
-      state: "future",
-      startDate: sample.sprintStartDate,
-      endDate: sample.sprintEndDate,
-      issues: sprintIssues,
-    });
-  }
+
+  groups.sort((a, b) => {
+    const oa = stateOrder[a.state] ?? 3;
+    const ob = stateOrder[b.state] ?? 3;
+    if (oa !== ob) return oa - ob;
+    return (a.startDate ?? "").localeCompare(b.startDate ?? "");
+  });
+
   if (backlog.length > 0) {
     groups.push({ name: "Backlog", state: "backlog", issues: backlog });
   }
@@ -767,6 +786,56 @@ async function resolveSprintId(sprintName: string): Promise<number | null> {
     }
   }
   return null;
+}
+
+// ── Complete (close) a sprint ──
+
+export async function completeSprint(
+  sprintName: string,
+  moveIncompleteToSprintName?: string
+): Promise<{ closed: boolean; movedKeys: string[] }> {
+  const sprintId = await resolveSprintId(sprintName);
+  if (!sprintId) throw new Error(`Could not resolve sprint ID for "${sprintName}"`);
+
+  const movedKeys: string[] = [];
+
+  if (moveIncompleteToSprintName) {
+    const destSprintId = await resolveSprintId(moveIncompleteToSprintName);
+    if (!destSprintId) throw new Error(`Could not resolve destination sprint "${moveIncompleteToSprintName}"`);
+
+    const issuesRes = await jiraFetch(
+      `${apiBase()}/rest/agile/1.0/sprint/${sprintId}/issue?maxResults=200&fields=status`,
+      { headers: authHeaders() }
+    );
+    if (issuesRes.ok) {
+      const data = await issuesRes.json();
+      const incomplete = (data.issues ?? []).filter(
+        (i: { fields: { status: { statusCategory: { name: string } } } }) =>
+          i.fields.status.statusCategory.name !== "Done"
+      );
+      if (incomplete.length > 0) {
+        const keys = incomplete.map((i: { key: string }) => i.key);
+        await jiraFetch(`${apiBase()}/rest/agile/1.0/sprint/${destSprintId}/issue`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ issues: keys }),
+        });
+        movedKeys.push(...keys);
+      }
+    }
+  }
+
+  const closeRes = await jiraFetch(`${apiBase()}/rest/agile/1.0/sprint/${sprintId}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify({ state: "closed" }),
+  });
+  if (!closeRes.ok) {
+    const text = await closeRes.text().catch(() => "");
+    throw new Error(`Failed to close sprint (${closeRes.status}): ${text}`);
+  }
+
+  return { closed: true, movedKeys };
 }
 
 // ── Move issue to sprint or backlog ──
