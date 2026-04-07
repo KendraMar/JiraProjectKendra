@@ -550,14 +550,18 @@ function parseIssue(raw: RawIssue): JiraIssue {
 
 // ── Grouping ──
 
+const BACKLOG_STATUSES = new Set(["New", "Refinement"]);
+
 export function groupBySprint(issues: JiraIssue[]): SprintGroup[] {
   const sprintMap = new Map<string, { state: string; startDate: string; endDate: string; issues: JiraIssue[] }>();
   const backlog: JiraIssue[] = [];
 
   for (const issue of issues) {
+    if (issue.status === "Backlog") continue;
+
     const sprintEntries = issue.allSprints ?? [];
     if (sprintEntries.length === 0) {
-      if (issue.statusCategory !== "Done") backlog.push(issue);
+      if (BACKLOG_STATUSES.has(issue.status)) backlog.push(issue);
       continue;
     }
 
@@ -577,7 +581,7 @@ export function groupBySprint(issues: JiraIssue[]): SprintGroup[] {
       }
       placed = true;
     }
-    if (!placed && issue.statusCategory !== "Done") {
+    if (!placed && BACKLOG_STATUSES.has(issue.status)) {
       backlog.push(issue);
     }
   }
