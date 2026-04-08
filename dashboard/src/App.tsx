@@ -1894,7 +1894,6 @@ export default function App() {
   const [toasts, setToasts] = useState<{ id: number; title: string; variant: "success" | "danger" }[]>([]);
   const [searchTerm, setSearchTerm] = usePersistedState("dashboard_search", "");
   const [epicsExpanded, setEpicsExpanded] = usePersistedState("epics_expanded", false);
-  const [epicDropdownOpen, setEpicDropdownOpen] = useState(false);
   const [epicPanelOpen, setEpicPanelOpen] = useState(false);
   const [epicForm, setEpicForm] = useState<EpicFormState>({
     title: "[UXD EPIC] ",
@@ -1918,6 +1917,7 @@ export default function App() {
     additionalContext: "",
   });
   const [epicSaving, setEpicSaving] = useState(false);
+  const [cursorHint, setCursorHint] = useState("");
   const [highlightSprintGroup, setHighlightSprintGroup] = useState<SprintGroup | null>(null);
   const cloneCounter = useRef(0);
   const toastIdRef = useRef(0);
@@ -1946,7 +1946,7 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!selectedIssue) loadData();
-    }, 30_000);
+    }, 60_000);
     return () => clearInterval(interval);
   }, [loadData, selectedIssue]);
 
@@ -2460,34 +2460,30 @@ export default function App() {
                     }
                   >
                     <div style={{ padding: "12px 0" }}>
-                      <Dropdown
-                        isOpen={epicDropdownOpen}
-                        onSelect={() => setEpicDropdownOpen(false)}
-                        onOpenChange={setEpicDropdownOpen}
-                        toggle={(toggleRef) => (
-                          <MenuToggle
-                            ref={toggleRef}
-                            onClick={() => setEpicDropdownOpen((prev) => !prev)}
-                            isExpanded={epicDropdownOpen}
+                      <Flex spaceItems={{ default: "spaceItemsSm" }}>
+                        <FlexItem>
+                          <Button
                             variant="primary"
-                            icon={<PlusCircleIcon />}
+                            icon={<MagicIcon />}
+                            onClick={async () => {
+                              const prompt = "@hcc-epic-creator Create a new epic";
+                              try {
+                                await navigator.clipboard.writeText(prompt);
+                                setCursorHint("Prompt copied! In Cursor, open Agent chat (⌘ L) and paste (⌘ V).");
+                              } catch {
+                                setCursorHint("In Cursor, open Agent chat (⌘ L) and type: @hcc-epic-creator Create a new epic");
+                              }
+                              const projectPath = import.meta.env.VITE_PROJECT_PATH || "";
+                              window.open(`cursor://file${projectPath}`, "_self");
+                            }}
                           >
-                            Create Epic
-                          </MenuToggle>
-                        )}
-                        popperProps={{ position: "start" }}
-                      >
-                        <DropdownList>
-                          <DropdownItem
-                            key="cursor"
-                            component="a"
-                            href={`cursor://file/${import.meta.env.VITE_PROJECT_PATH || ""}/epic-template.md`}
-                            icon={<ExternalLinkAltIcon />}
-                          >
-                            Help me write the epic in Cursor
-                          </DropdownItem>
-                          <DropdownItem
-                            key="form"
+                            Create epic using Cursor (type &quot;create epic&quot;)
+                          </Button>
+                        </FlexItem>
+                        <FlexItem>
+                          <Button
+                            variant="primary"
+                            icon={<ListIcon />}
                             onClick={() => {
                               setEpicForm({
                                 title: "[UXD EPIC] ",
@@ -2513,12 +2509,21 @@ export default function App() {
                               setSelectedIssue(null);
                               setEpicPanelOpen(true);
                             }}
-                            icon={<ListIcon />}
                           >
-                            Show me a GUI form
-                          </DropdownItem>
-                        </DropdownList>
-                      </Dropdown>
+                            Create epic using GUI form
+                          </Button>
+                        </FlexItem>
+                      </Flex>
+                      {cursorHint && (
+                        <Alert
+                          variant="danger"
+                          isInline
+                          isPlain
+                          title={cursorHint}
+                          actionClose={<AlertActionCloseButton onClose={() => setCursorHint("")} />}
+                          style={{ marginTop: 8 }}
+                        />
+                      )}
                     </div>
                     <Table aria-label="Active Epics table" variant="compact">
                       <Thead>
