@@ -69,7 +69,7 @@ import { SyncAltIcon, ArrowsAltVIcon, LongArrowAltDownIcon, LongArrowAltUpIcon, 
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 import type { JiraIssue, JiraEpic, JiraComment, SprintGroup } from "./types";
-import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, completeSprint, attachFile, fetchSingleIssue } from "./services/jiraService";
+import { fetchIssues, fetchEpics, groupBySprint, browseUrl, createIssue, updateIssue, moveToSprint, completeSprint, startSprint, attachFile, fetchSingleIssue } from "./services/jiraService";
 import { SprintHighlightsModal } from "./SprintHighlightsModal";
 
 const JIRA_CPUX_BOARD_URL =
@@ -257,7 +257,7 @@ const OWNER_COL = 0;
 const STATUS_COL = 4;
 const EPIC_COL = 5;
 
-function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, onClone }: { group: SprintGroup; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; droppableId: string; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void }) {
+function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, onClone, onWriteComment }: { group: SprintGroup; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; droppableId: string; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onWriteComment: (issue: JiraIssue) => void }) {
   const filterKey = droppableId.replace(/[^a-zA-Z0-9]/g, "_");
   const [activeSortIndex, setActiveSortIndex] = usePersistedState<number | undefined>(`sort_idx:${filterKey}`, undefined);
   const [activeSortDirection, setActiveSortDirection] = usePersistedState<"asc" | "desc">(`sort_dir:${filterKey}`, "asc");
@@ -337,6 +337,7 @@ function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, o
               <SortButton label="Owner" active={activeSortIndex === OWNER_COL} direction={activeSortDirection} onClick={() => handleSort(OWNER_COL)} />
             </span>
           </Th>
+          <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>Reporter</Th>
           <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>Jira number</Th>
           <Th style={{ overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>Summary</Th>
           <Th style={{ whiteSpace: "nowrap", overflow: "visible", textOverflow: "clip", paddingRight: 16 }}>Activity Type</Th>
@@ -365,13 +366,13 @@ function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, o
           <Tbody ref={provided.innerRef} {...provided.droppableProps} style={snapshot.isDraggingOver ? { backgroundColor: "var(--pf-t--global--background--color--secondary--default)" } : undefined}>
             {filteredAndSorted.length === 0 && !snapshot.isDraggingOver ? (
               <Tr>
-                <Td colSpan={11}>
+                <Td colSpan={12}>
                   <Content component="p">No tickets in this sprint yet.</Content>
                 </Td>
               </Tr>
             ) : (
               filteredAndSorted.map((issue, index) => (
-                <IssueRow key={issue.key} issue={issue} index={index} onClickKey={onClickKey} onModify={onModify} onClone={onClone} />
+                <IssueRow key={issue.key} issue={issue} index={index} onClickKey={onClickKey} onModify={onModify} onClone={onClone} onWriteComment={onWriteComment} />
               ))
             )}
             {provided.placeholder}
@@ -387,11 +388,11 @@ function SprintTable({ group, allEpicNames, onClickKey, droppableId, onModify, o
 const HCC_SPRINTS: { name: string; startDate: string; endDate: string }[] = [
   { name: "HCC Sprint 1 2026", startDate: "March 9", endDate: "March 20" },
   { name: "HCC Sprint 2 2026", startDate: "March 23", endDate: "April 3" },
-  { name: "HCC Sprint 3 2026", startDate: "April 6", endDate: "April 17" },
+  { name: "HCC Sprint 3 2026", startDate: "April 8", endDate: "April 24" },
   { name: "HCC Sprint 4 2026", startDate: "April 20", endDate: "May 1" },
 ];
 
-function DroppableTab({ droppableId, label, subtitle, isActive, onClick, style }: { droppableId: string; label: string; subtitle?: string; isActive: boolean; onClick: () => void; style?: React.CSSProperties }) {
+function DroppableTab({ droppableId, label, subtitle, isActive, isClosed = false, onClick, style }: { droppableId: string; label: string; subtitle?: string; isActive: boolean; isClosed?: boolean; onClick: () => void; style?: React.CSSProperties }) {
   return (
     <Droppable droppableId={droppableId} type="ISSUE">
       {(provided, snapshot) => (
@@ -413,6 +414,10 @@ function DroppableTab({ droppableId, label, subtitle, isActive, onClick, style }
               ? "var(--pf-t--global--background--color--secondary--default)"
               : "transparent",
             fontWeight: isActive ? 600 : 400,
+            color: isClosed && !isActive
+              ? "var(--pf-t--global--text--color--disabled)"
+              : undefined,
+            opacity: isClosed && !isActive ? 0.7 : 1,
             outline: snapshot.isDraggingOver
               ? "2px dashed var(--pf-t--global--color--brand--default)"
               : "none",
@@ -436,7 +441,7 @@ function DroppableTab({ droppableId, label, subtitle, isActive, onClick, style }
   );
 }
 
-function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onCreate, onOpenSprintHighlights, onCompleteSprint }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => void; onOpenSprintHighlights: (group: SprintGroup) => void; onCompleteSprint: (sprintName: string, moveToSprintName: string | null) => Promise<void> }) {
+function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone, onWriteComment, onCreate, onOpenSprintHighlights, onCompleteSprint, onStartSprint }: { sprintGroups: SprintGroup[]; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onWriteComment: (issue: JiraIssue) => void; onCreate: (sprintName: string, sprintState: "active" | "future" | "backlog", startDate?: string, endDate?: string) => void; onOpenSprintHighlights: (group: SprintGroup) => void; onCompleteSprint: (sprintName: string, moveToSprintName: string | null) => Promise<void>; onStartSprint: (sprintName: string) => Promise<void> }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const defaultTab = useMemo(() => {
     const today = new Date();
@@ -523,6 +528,7 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
             label={tab.name.replace(" 2026", "")}
             subtitle={tab.startDate ? `${tab.startDate} – ${tab.endDate}` : undefined}
             isActive={idx === safeTabIndex}
+            isClosed={tab.state === "closed"}
             onClick={() => setActiveTab(idx)}
             style={{ marginRight: 32 }}
           />
@@ -530,16 +536,32 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
       </div>
       {activeTabData && (
         <>
-          <div style={{ padding: "12px 0", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <Button variant="primary" size="sm" onClick={() => onCreate(activeTabData.name, activeTabData.state as "active" | "future", activeTabData.startDate, activeTabData.endDate)}>+ Create story in this sprint</Button>
-            <Button variant="secondary" size="sm" icon={<MagicIcon />} onClick={() => onOpenSprintHighlights(activeTabData)}>Generate sprint highlights</Button>
-            {activeTabData.state === "active" && (
-              <Button variant="secondary" size="sm" icon={<CheckCircleIcon />} onClick={() => { setMoveDestination("next"); setCompleteModalOpen(true); }}>
+          <div style={{ padding: "12px 0", display: "flex", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
+              <Button variant="primary" size="sm" onClick={() => onCreate(activeTabData.name, activeTabData.state as "active" | "future", activeTabData.startDate, activeTabData.endDate)}>+ Create story in this sprint</Button>
+              <Button variant="secondary" size="sm" icon={<MagicIcon />} onClick={() => onOpenSprintHighlights(activeTabData)}>Generate sprint highlights</Button>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Button
+                variant="secondary"
+                size="sm"
+                isDisabled={activeTabData.state !== "future"}
+                onClick={() => onStartSprint(activeTabData.name)}
+              >
+                Start sprint
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<CheckCircleIcon />}
+                isDisabled={activeTabData.state !== "active"}
+                onClick={() => { setMoveDestination("next"); setCompleteModalOpen(true); }}
+              >
                 Complete sprint
               </Button>
-            )}
+            </div>
           </div>
-          <SprintTable key={activeTabData.name} group={activeTabData} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${activeTabData.state}:${activeTabData.name}`} onModify={onModify} onClone={onClone} />
+          <SprintTable key={activeTabData.name} group={activeTabData} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId={`sprint:${activeTabData.state}:${activeTabData.name}`} onModify={onModify} onClone={onClone} onWriteComment={onWriteComment} />
         </>
       )}
       {completeModalOpen && activeTabData && (
@@ -605,7 +627,7 @@ function SprintTabs({ sprintGroups, allEpicNames, onClickKey, onModify, onClone,
 
 // ── Backlog section ──
 
-function BacklogSection({ group, allEpicNames, onClickKey, onModify, onClone, onCreate, forceExpand }: { group: SprintGroup; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onCreate: () => void; forceExpand?: boolean }) {
+function BacklogSection({ group, allEpicNames, onClickKey, onModify, onClone, onWriteComment, onCreate, forceExpand }: { group: SprintGroup; allEpicNames: string[]; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onWriteComment: (issue: JiraIssue) => void; onCreate: () => void; forceExpand?: boolean }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const expanded = forceExpand || isExpanded;
 
@@ -651,7 +673,7 @@ function BacklogSection({ group, allEpicNames, onClickKey, onModify, onClone, on
             <div style={{ padding: "12px 0" }}>
               <Button variant="primary" size="sm" onClick={onCreate}>+ Create story in the backlog</Button>
             </div>
-            <SprintTable group={group} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId="backlog" onModify={onModify} onClone={onClone} />
+            <SprintTable group={group} allEpicNames={allEpicNames} onClickKey={onClickKey} droppableId="backlog" onModify={onModify} onClone={onClone} onWriteComment={onWriteComment} />
           </ExpandableSection>
           <div style={{ display: "none" }}>{headerProvided.placeholder}</div>
         </div>
@@ -674,7 +696,14 @@ const STORY_POINT_OPTIONS: { value: number; label: string }[] = [
   { value: 13, label: "13 — expected to require the full Sprint; likely too big, split or create an Epic" },
 ];
 
-const ACTIVITY_TYPES = ["Consult", "Enable", "Explore", "Make", "Orient"];
+const ACTIVITY_TYPES: { value: string; label: string }[] = [
+  { value: "Consult", label: "Consult — emergent work prompted by a team external to UXD" },
+  { value: "Enable", label: "Enable — work internal to UXD to help UXDers be happier or more effective" },
+  { value: "Explore", label: "Explore — generate ideas; what are potential solutions for delivering the outcome?" },
+  { value: "Make", label: "Make — finalize the design; prototype, test, and iterate" },
+  { value: "Monitor", label: "Monitor — measure; how are our solutions performing over time?" },
+  { value: "Orient", label: "Orient — identify opportunities and plan; understand the user and their goals" },
+];
 
 // ── Reusable inline select for the detail panel ──
 
@@ -980,15 +1009,6 @@ function IssueDetailPanel({
   const missingFields: string[] = [];
   if (!draft.summary.trim()) missingFields.push("Summary");
   if (!draft.status) missingFields.push("Status");
-  if (!draft.assigneeName || draft.assigneeName === "Unassigned") missingFields.push("Assignee");
-  if (!draft.reporterName) missingFields.push("Reporter");
-  if (!draft.description?.trim()) missingFields.push("Description");
-  if (!draft.activityType) missingFields.push("Activity Type");
-  if (draft.storyPoints == null) missingFields.push("Story Points");
-  if (!draft.epicName) missingFields.push("Epic");
-  if (!isBacklog && !draft.sprintName) missingFields.push("Sprint");
-
-  const allFieldsFilled = missingFields.length === 0;
 
   const hasChanges = isClone || (
     draft.summary !== issue.summary ||
@@ -1005,11 +1025,11 @@ function IssueDetailPanel({
     draft.comments.length !== issue.comments.length
   );
 
-  const canSave = allFieldsFilled && hasChanges;
+  const canSave = missingFields.length === 0 && hasChanges;
 
   const statusOptions = allStatuses.map((s) => ({ value: s, label: s }));
   const memberOptions = allMembers.map((m) => ({ value: m, label: m }));
-  const activityOptions = ACTIVITY_TYPES.map((a) => ({ value: a, label: a }));
+  const activityOptions = ACTIVITY_TYPES;
   const spOptions = STORY_POINT_OPTIONS.map((sp) => ({ value: String(sp.value), label: sp.label }));
   const epicSelectOptions = allEpicNames.map((e) => {
     const key = epicNameToKey.get(e) ?? "";
@@ -1131,9 +1151,12 @@ function IssueDetailPanel({
               <div
                 ref={(el) => {
                   (descEditorRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-                  if (el && !el.dataset.init) {
-                    el.innerHTML = draft.description || "";
-                    el.dataset.init = "1";
+                  if (el) {
+                    const issueKey = draft.key ?? "";
+                    if (el.dataset.initKey !== issueKey) {
+                      el.innerHTML = draft.description || "";
+                      el.dataset.initKey = issueKey;
+                    }
                   }
                 }}
                 className="description-view"
@@ -1213,7 +1236,7 @@ function IssueDetailPanel({
                     label="Sprint"
                     value={draft.sprintName || "Backlog"}
                     options={[
-                      ...HCC_SPRINTS.map((s) => ({ value: s.name, label: s.name })),
+                      ...HCC_SPRINTS.map((s) => ({ value: s.name, label: `${s.name} (${s.startDate} – ${s.endDate})` })),
                       { value: "Backlog", label: "Backlog" },
                     ]}
                     onSelect={(v) => {
@@ -1417,7 +1440,7 @@ function IssueDetailPanel({
 
 // ── Single issue table row ──
 
-function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: JiraIssue; index: number; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void }) {
+function IssueRow({ issue, index, onClickKey, onModify, onClone, onWriteComment }: { issue: JiraIssue; index: number; onClickKey: (issue: JiraIssue) => void; onModify: (issue: JiraIssue) => void; onClone: (issue: JiraIssue) => void; onWriteComment: (issue: JiraIssue) => void }) {
   const [isKebabOpen, setIsKebabOpen] = useState(false);
 
   return (
@@ -1461,6 +1484,9 @@ function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: Jira
                 <Content component="small">{issue.assigneeName}</Content>
               </FlexItem>
             </Flex>
+          </Td>
+          <Td dataLabel="Reporter">
+            <Content component="small">{issue.reporterName || "--"}</Content>
           </Td>
           <Td dataLabel="Key" style={{ whiteSpace: "nowrap" }}>
             <a
@@ -1507,7 +1533,12 @@ function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: Jira
               const latest = issue.comments[issue.comments.length - 1];
               const tmp = document.createElement("div");
               tmp.innerHTML = latest.body;
-              const plain = tmp.textContent || "";
+              const plain = (tmp.textContent || "")
+                .replace(/^Status update\s*/i, "")
+                .replace(/\bDone:\s*/gi, "")
+                .replace(/\bIn progress:\s*/gi, "")
+                .replace(/\bNext:\s*/gi, "")
+                .replace(/^\s+/, "");
               return (
                 <Content component="small" style={{ lineHeight: 1.4 }}>
                   <strong>{latest.created}</strong>{" — "}
@@ -1539,6 +1570,7 @@ function IssueRow({ issue, index, onClickKey, onModify, onClone }: { issue: Jira
               <DropdownList>
                 <DropdownItem key="modify" onClick={() => onModify(issue)}>Modify</DropdownItem>
                 <DropdownItem key="clone" onClick={() => onClone(issue)}>Clone</DropdownItem>
+                <DropdownItem key="write-comment" onClick={() => onWriteComment(issue)}>Write comment in Cursor</DropdownItem>
               </DropdownList>
             </Dropdown>
           </Td>
@@ -1943,12 +1975,6 @@ export default function App() {
     loadData();
   }, [loadData]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!selectedIssue) loadData();
-    }, 60_000);
-    return () => clearInterval(interval);
-  }, [loadData, selectedIssue]);
 
   const normalizedSearch = searchTerm.toLowerCase().trim();
 
@@ -2000,7 +2026,7 @@ export default function App() {
     [issues]
   );
   const allMembers = useMemo(
-    () => ["Asumi Hasan", "Kendra Marchant", "Mary Shakshober-Crossman", "SJ Cox", "Yichen Yu"],
+    () => ["Asumi Hasan", "Kendra Marchant", "Mary Shakshober-Crossman", "SJ Cox", "Yichen Yu", "Unassigned"],
     []
   );
 
@@ -2081,6 +2107,16 @@ export default function App() {
     setToasts((prev) => [...prev, { id, title, variant }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
   }, []);
+
+  const handleWriteComment = useCallback((issue: JiraIssue) => {
+    const prompt = `Use the jira-comment-writer skill to write a comment on ${issue.key} — ${issue.summary}`;
+    navigator.clipboard.writeText(prompt).then(() => {
+      addToast(`Prompt copied for ${issue.key} — paste into Cursor chat (Cmd+L) to write a comment`);
+      window.location.href = "cursor://";
+    }).catch(() => {
+      addToast(`Failed to copy to clipboard`, "danger");
+    });
+  }, [addToast]);
 
   const handleDragEnd = useCallback((result: DropResult) => {
     const { draggableId, source, destination } = result;
@@ -2264,6 +2300,16 @@ export default function App() {
     }
   }, [addToast, loadData]);
 
+  const handleStartSprint = useCallback(async (sprintName: string) => {
+    try {
+      await startSprint(sprintName);
+      addToast(`${sprintName.replace(" 2026", "")} started.`);
+      loadData(true);
+    } catch (err) {
+      addToast(`Failed to start sprint: ${(err as Error).message}`, "danger");
+    }
+  }, [addToast, loadData]);
+
   const handleEpicPanelClose = useCallback(() => {
     setEpicPanelOpen(false);
   }, []);
@@ -2409,9 +2455,11 @@ export default function App() {
                       onClickKey={handleModify}
                       onModify={handleModify}
                       onClone={handleClone}
+                      onWriteComment={handleWriteComment}
                       onCreate={handleCreateIssue}
                       onOpenSprintHighlights={setHighlightSprintGroup}
                       onCompleteSprint={handleCompleteSprint}
+                      onStartSprint={handleStartSprint}
                     />
                   </CardBody>
                 </Card>
@@ -2427,6 +2475,7 @@ export default function App() {
                       onClickKey={handleModify}
                       onModify={handleModify}
                       onClone={handleClone}
+                      onWriteComment={handleWriteComment}
                       onCreate={() => handleCreateIssue("Backlog", "backlog")}
                       forceExpand={!!normalizedSearch}
                     />
